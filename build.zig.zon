@@ -1,0 +1,13 @@
+.{
+    .name = .zmd,
+    .version = "0.1.0",
+    .minimum_zig_version = "0.16.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "test",
+        "README.md",
+    },
+    .fingerprint = 0x3cab_843f_e673_2d4e,
+}
