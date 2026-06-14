@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const Io = std.Io;
 const build_options = @import("build_options");
 const ui = @import("ui.zig");
@@ -55,15 +56,30 @@ pub fn main(init: std.process.Init) !void {
     }
 
     const path = args[path_index];
-    const rendered = readAndRender(arena, io, path) catch |err| {
-        const message = try std.fmt.allocPrint(arena, "Unable to open/read/render '{s}': {s}", .{ path, @errorName(err) });
+    const input = readFile(arena, io, path) catch |err| {
+        const message = try std.fmt.allocPrint(arena, "Unable to open/read '{s}': {s}", .{ path, @errorName(err) });
         fatal(arena, "zmd error", message, 1);
     };
 
     if (dump) {
+        const rendered = zmd.render(arena, input) catch |err| {
+            const message = try std.fmt.allocPrint(arena, "Unable to render '{s}': {s}", .{ path, @errorName(err) });
+            fatal(arena, "zmd error", message, 1);
+        };
         try stdout.writeAll(rendered);
         return;
     }
+
+    const rendered = switch (builtin.os.tag) {
+        .windows => zmd.renderRtf(arena, input) catch |err| {
+            const message = try std.fmt.allocPrint(arena, "Unable to render formatted Markdown '{s}': {s}", .{ path, @errorName(err) });
+            fatal(arena, "zmd error", message, 1);
+        },
+        else => zmd.render(arena, input) catch |err| {
+            const message = try std.fmt.allocPrint(arena, "Unable to render Markdown '{s}': {s}", .{ path, @errorName(err) });
+            fatal(arena, "zmd error", message, 1);
+        },
+    };
 
     const title = try std.fmt.allocPrint(arena, "zmd - {s}", .{path});
     ui.show(arena, title, rendered) catch |err| {
@@ -89,14 +105,13 @@ fn fatal(allocator: std.mem.Allocator, title: []const u8, message: []const u8, c
     std.process.exit(code);
 }
 
-fn readAndRender(allocator: std.mem.Allocator, io: Io, path: []const u8) ![]u8 {
+fn readFile(allocator: std.mem.Allocator, io: Io, path: []const u8) ![]u8 {
     var file = try Io.Dir.cwd().openFile(io, path, .{ .allow_directory = false });
     defer file.close(io);
 
     var file_buffer: [4096]u8 = undefined;
     var reader = file.reader(io, &file_buffer);
-    const input = try reader.interface.allocRemaining(allocator, .limited(max_file_bytes));
-    return zmd.render(allocator, input);
+    return reader.interface.allocRemaining(allocator, .limited(max_file_bytes));
 }
 
 test "version is set" {

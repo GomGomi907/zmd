@@ -55,6 +55,7 @@ const RECT = extern struct {
 };
 
 extern "kernel32" fn GetModuleHandleW(lpModuleName: ?LPCWSTR) callconv(.winapi) HINSTANCE;
+extern "kernel32" fn LoadLibraryW(lpLibFileName: LPCWSTR) callconv(.winapi) HINSTANCE;
 extern "user32" fn RegisterClassW(lpWndClass: *const WNDCLASSW) callconv(.winapi) ATOM;
 extern "user32" fn CreateWindowExW(
     dwExStyle: DWORD,
@@ -89,31 +90,41 @@ const WS_OVERLAPPEDWINDOW: DWORD = 0x00cf0000;
 const WS_VISIBLE: DWORD = 0x10000000;
 const WS_CHILD: DWORD = 0x40000000;
 const WS_VSCROLL: DWORD = 0x00200000;
-const WS_HSCROLL: DWORD = 0x00100000;
 const WS_EX_CLIENTEDGE: DWORD = 0x00000200;
 const ES_MULTILINE: DWORD = 0x0004;
 const ES_AUTOVSCROLL: DWORD = 0x0040;
-const ES_AUTOHSCROLL: DWORD = 0x0080;
 const ES_NOHIDESEL: DWORD = 0x0100;
 const ES_READONLY: DWORD = 0x0800;
 const WM_CREATE: UINT = 0x0001;
 const WM_DESTROY: UINT = 0x0002;
 const WM_SIZE: UINT = 0x0005;
 const WM_SETFONT: UINT = 0x0030;
+const WM_USER: UINT = 0x0400;
+const EM_SETTEXTEX: UINT = WM_USER + 97;
 const SW_SHOW: c_int = 5;
 const CW_USEDEFAULT: c_int = -2147483648;
 const MB_OK: UINT = 0x00000000;
 const MB_ICONINFORMATION: UINT = 0x00000040;
 const DEFAULT_GUI_FONT: c_int = 17;
+const ST_DEFAULT: DWORD = 0;
+const CP_UTF8: UINT = 65001;
+
+const SETTEXTEX = extern struct {
+    flags: DWORD,
+    codepage: UINT,
+};
 
 var instance: HINSTANCE = null;
-var text_ptr: ?LPCWSTR = null;
+var rtf_ptr: ?[*:0]const u8 = null;
 var edit_hwnd: HWND = null;
 
 pub fn show(allocator: std.mem.Allocator, title: []const u8, text: []const u8) !void {
+    const rich_edit_dll = std.unicode.utf8ToUtf16LeStringLiteral("Msftedit.dll");
+    if (LoadLibraryW(rich_edit_dll.ptr) == null) return error.WindowInitFailed;
+
     const title_w = std.unicode.utf8ToUtf16LeAllocZ(allocator, title) catch return error.TextEncodingFailed;
-    const text_w = std.unicode.utf8ToUtf16LeAllocZ(allocator, text) catch return error.TextEncodingFailed;
-    text_ptr = text_w.ptr;
+    const text_z = try allocator.dupeZ(u8, text);
+    rtf_ptr = text_z.ptr;
 
     const class_name = std.unicode.utf8ToUtf16LeStringLiteral("zmd_window");
     instance = GetModuleHandleW(null);
@@ -174,12 +185,12 @@ pub fn alert(allocator: std.mem.Allocator, title: []const u8, text: []const u8) 
 fn windowProc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) callconv(.winapi) LRESULT {
     switch (msg) {
         WM_CREATE => {
-            const edit_class = std.unicode.utf8ToUtf16LeStringLiteral("EDIT");
+            const edit_class = std.unicode.utf8ToUtf16LeStringLiteral("RICHEDIT50W");
             edit_hwnd = CreateWindowExW(
                 WS_EX_CLIENTEDGE,
                 edit_class.ptr,
-                text_ptr,
-                WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | ES_AUTOHSCROLL | ES_NOHIDESEL,
+                null,
+                WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | ES_NOHIDESEL,
                 0,
                 0,
                 0,
@@ -191,7 +202,11 @@ fn windowProc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) callconv(.w
             );
             if (edit_hwnd) |edit| {
                 if (GetStockObject(DEFAULT_GUI_FONT)) |font| {
-                    _ = SendMessageW(edit, WM_SETFONT, @intFromPtr(@as(HFONT, @ptrCast(font)).?), 1);
+                    _ = SendMessageW(edit, WM_SETFONT, @intFromPtr(font), 1);
+                }
+                if (rtf_ptr) |rtf| {
+                    var set_text = SETTEXTEX{ .flags = ST_DEFAULT, .codepage = CP_UTF8 };
+                    _ = SendMessageW(edit, EM_SETTEXTEX, @intFromPtr(&set_text), ptrToLParam(rtf));
                 }
             }
             resizeEdit(hwnd);
@@ -207,6 +222,10 @@ fn windowProc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) callconv(.w
         },
         else => return DefWindowProcW(hwnd, msg, wparam, lparam),
     }
+}
+
+fn ptrToLParam(ptr: anytype) LPARAM {
+    return @bitCast(@intFromPtr(ptr));
 }
 
 fn resizeEdit(hwnd: HWND) void {

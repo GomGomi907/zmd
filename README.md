@@ -50,7 +50,7 @@ zmd --dump path/to/file.md   # terminal render for tests/pipes
 
 ## Platform UI
 
-- Windows: direct Win32 window with a read-only native `EDIT` control.
+- Windows: direct Win32 window with a read-only `RICHEDIT50W` control. Markdown source is converted to RTF before display, so common formatting is visible immediately in viewer mode.
 - Linux: runtime-loaded X11 window. It needs an X11/Xwayland session with `libX11.so.6` available.
 - File association installers are not included yet. Use the OS "Open with..." flow and point `.md` files at the built `zmd` executable.
 
@@ -61,18 +61,21 @@ The std-only renderer currently handles enough common syntax for first-pass read
 - headings
 - paragraphs
 - unordered and ordered lists
+- GFM-style task list markers in the Windows formatted viewer
 - blockquotes
 - fenced code blocks
-- inline code marker stripping
-- basic emphasis marker stripping
-- links as `text <url>`
+- inline code
+- basic emphasis, strong emphasis, and strikethrough in the Windows formatted viewer
+- links
 - tables preserved as readable text
+- image syntax as a readable placeholder
 
 ## Known limitations
 
 - This is not a full CommonMark/GFM implementation.
-- Tables are preserved textually rather than laid out.
-- Nested lists, images, HTML blocks, footnotes, task lists, and many edge cases are not yet fully rendered.
+- Tables are preserved textually rather than laid out as grid widgets.
+- Images are shown as placeholders instead of decoded image content.
+- Nested lists, HTML blocks, footnotes, and many edge cases are not yet fully rendered.
 - Linux GUI text rendering is intentionally minimal X11 drawing; Unicode shaping and rich layout are not implemented yet.
 - OS-level file association is manual for now; the app already accepts a file path as its first argument.
 
