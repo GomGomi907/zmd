@@ -1,8 +1,26 @@
 const std = @import("std");
 const Io = std.Io;
+const build_options = @import("build_options");
+const ui = @import("ui.zig");
 const zmd = @import("zmd");
 
 const max_file_bytes = 16 * 1024 * 1024;
+
+const usage =
+    \\zmd - tiny Zig-first Markdown viewer
+    \\
+    \\Usage:
+    \\  zmd <file.md>          Open a read-only native viewer window
+    \\  zmd --dump <file.md>   Render Markdown to stdout for tests/pipes
+    \\  zmd --help             Show this help
+    \\  zmd --version          Show version
+    \\
+    \\Status:
+    \\  Native GUI slice: Win32 on Windows, runtime-loaded X11 on Linux.
+    \\  Full CommonMark/GFM coverage and OS association installers remain
+    \\  explicit follow-up milestones.
+    \\
+;
 
 pub fn main(init: std.process.Init) !void {
     const arena = init.arena.allocator();
@@ -15,56 +33,70 @@ pub fn main(init: std.process.Init) !void {
     defer stdout.flush() catch {};
 
     if (args.len == 1 or (args.len == 2 and std.mem.eql(u8, args[1], "--help"))) {
-        try printUsage(stdout);
+        try showInfo(arena, stdout, "zmd help", usage);
         return;
     }
 
     if (args.len == 2 and std.mem.eql(u8, args[1], "--version")) {
-        try stdout.print("zmd {s}\n", .{zmd.version});
+        const version_text = try std.fmt.allocPrint(arena, "zmd {s}\n", .{zmd.version});
+        try showInfo(arena, stdout, "zmd version", version_text);
         return;
     }
 
-    if (args.len != 2) {
-        std.debug.print("zmd: expected exactly one Markdown file path\n\n", .{});
-        std.debug.print("Try `zmd --help`.\n", .{});
-        std.process.exit(2);
+    var dump = false;
+    var path_index: usize = 1;
+    if (args.len >= 2 and std.mem.eql(u8, args[1], "--dump")) {
+        dump = true;
+        path_index = 2;
     }
 
-    var file = Io.Dir.cwd().openFile(io, args[1], .{ .allow_directory = false }) catch |err| {
-        std.debug.print("zmd: unable to open '{s}': {s}\n", .{ args[1], @errorName(err) });
-        std.process.exit(1);
+    if (args.len != path_index + 1) {
+        fatal(arena, "zmd", "Expected exactly one Markdown file path. Try `zmd --help`.", 2);
+    }
+
+    const path = args[path_index];
+    const rendered = readAndRender(arena, io, path) catch |err| {
+        const message = try std.fmt.allocPrint(arena, "Unable to open/read/render '{s}': {s}", .{ path, @errorName(err) });
+        fatal(arena, "zmd error", message, 1);
     };
+
+    if (dump) {
+        try stdout.writeAll(rendered);
+        return;
+    }
+
+    const title = try std.fmt.allocPrint(arena, "zmd - {s}", .{path});
+    ui.show(arena, title, rendered) catch |err| {
+        const message = try std.fmt.allocPrint(arena, "Unable to open native viewer: {s}\n\nUse `zmd --dump <file.md>` for terminal output.", .{@errorName(err)});
+        fatal(arena, "zmd error", message, 1);
+    };
+}
+
+fn showInfo(allocator: std.mem.Allocator, stdout: *Io.Writer, title: []const u8, text: []const u8) !void {
+    if (build_options.windows_gui) {
+        ui.alert(allocator, title, text);
+    } else {
+        try stdout.writeAll(text);
+    }
+}
+
+fn fatal(allocator: std.mem.Allocator, title: []const u8, message: []const u8, code: u8) noreturn {
+    if (build_options.windows_gui) {
+        ui.alert(allocator, title, message);
+    } else {
+        std.debug.print("{s}: {s}\n", .{ title, message });
+    }
+    std.process.exit(code);
+}
+
+fn readAndRender(allocator: std.mem.Allocator, io: Io, path: []const u8) ![]u8 {
+    var file = try Io.Dir.cwd().openFile(io, path, .{ .allow_directory = false });
     defer file.close(io);
 
     var file_buffer: [4096]u8 = undefined;
     var reader = file.reader(io, &file_buffer);
-    const input = reader.interface.allocRemaining(arena, .limited(max_file_bytes)) catch |err| {
-        std.debug.print("zmd: unable to read '{s}': {s}\n", .{ args[1], @errorName(err) });
-        std.process.exit(1);
-    };
-
-    const rendered = zmd.render(arena, input) catch |err| {
-        std.debug.print("zmd: unable to render '{s}': {s}\n", .{ args[1], @errorName(err) });
-        std.process.exit(1);
-    };
-
-    try stdout.writeAll(rendered);
-}
-
-fn printUsage(stdout: *Io.Writer) !void {
-    try stdout.writeAll(
-        \\zmd - tiny Zig-first Markdown viewer
-        \\
-        \\Usage:
-        \\  zmd <file.md>     Render a Markdown file in read-only terminal view
-        \\  zmd --help        Show this help
-        \\  zmd --version     Show version
-        \\
-        \\Status:
-        \\  Initial terminal viewer MVP. Native GUI/file association and fuller
-        \\  CommonMark/GFM coverage are explicit follow-up milestones.
-        \\
-    );
+    const input = try reader.interface.allocRemaining(allocator, .limited(max_file_bytes));
+    return zmd.render(allocator, input);
 }
 
 test "version is set" {

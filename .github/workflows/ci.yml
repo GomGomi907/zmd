@@ -22,3 +22,8 @@ jobs:
       - run: zig version
       - run: zig build test
       - run: zig build -Doptimize=ReleaseSmall
+      - run: zig build -Dwindows-console=true -Doptimize=ReleaseSmall
+      - if: runner.os == 'Windows'
+        run: .\zig-out\bin\zmd.exe --dump test\fixtures\sample.md
+      - if: runner.os != 'Windows'
+        run: ./zig-out/bin/zmd --dump test/fixtures/sample.md

@@ -3,6 +3,11 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const windows_console = b.option(bool, "windows-console", "Build Windows as a console app for CLI smoke tests") orelse false;
+    const windows_gui = target.result.os.tag == .windows and !windows_console;
+
+    const options = b.addOptions();
+    options.addOption(bool, "windows_gui", windows_gui);
 
     const zmd_mod = b.addModule("zmd", .{
         .root_source_file = b.path("src/root.zig"),
@@ -21,6 +26,14 @@ pub fn build(b: *std.Build) void {
             },
         }),
     });
+    exe.root_module.addOptions("build_options", options);
+    if (windows_gui) {
+        exe.subsystem = .windows;
+    }
+    if (target.result.os.tag == .windows) {
+        exe.root_module.linkSystemLibrary("user32", .{});
+        exe.root_module.linkSystemLibrary("gdi32", .{});
+    }
 
     b.installArtifact(exe);
 
