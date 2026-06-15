@@ -7,6 +7,7 @@ const ATOM = u16;
 const WPARAM = usize;
 const LPARAM = isize;
 const LRESULT = isize;
+const COLORREF = DWORD;
 
 const HWND = ?*anyopaque;
 const HINSTANCE = ?*anyopaque;
@@ -83,6 +84,7 @@ extern "user32" fn GetClientRect(hWnd: HWND, lpRect: *RECT) callconv(.winapi) BO
 extern "user32" fn SendMessageW(hWnd: HWND, Msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.winapi) LRESULT;
 extern "user32" fn MessageBoxW(hWnd: HWND, lpText: LPCWSTR, lpCaption: LPCWSTR, uType: UINT) callconv(.winapi) c_int;
 extern "gdi32" fn GetStockObject(i: c_int) callconv(.winapi) HGDIOBJ;
+extern "gdi32" fn CreateSolidBrush(color: COLORREF) callconv(.winapi) HBRUSH;
 
 const CS_VREDRAW: UINT = 0x0001;
 const CS_HREDRAW: UINT = 0x0002;
@@ -100,7 +102,11 @@ const WM_DESTROY: UINT = 0x0002;
 const WM_SIZE: UINT = 0x0005;
 const WM_SETFONT: UINT = 0x0030;
 const WM_USER: UINT = 0x0400;
+const EM_SETMARGINS: UINT = 0x00d3;
+const EM_SETBKGNDCOLOR: UINT = WM_USER + 67;
 const EM_SETTEXTEX: UINT = WM_USER + 97;
+const EC_LEFTMARGIN: WPARAM = 0x0001;
+const EC_RIGHTMARGIN: WPARAM = 0x0002;
 const SW_SHOW: c_int = 5;
 const CW_USEDEFAULT: c_int = -2147483648;
 const MB_OK: UINT = 0x00000000;
@@ -108,6 +114,7 @@ const MB_ICONINFORMATION: UINT = 0x00000040;
 const DEFAULT_GUI_FONT: c_int = 17;
 const ST_DEFAULT: DWORD = 0;
 const CP_UTF8: UINT = 65001;
+const dark_background: COLORREF = rgb(17, 24, 39);
 
 const SETTEXTEX = extern struct {
     flags: DWORD,
@@ -117,6 +124,7 @@ const SETTEXTEX = extern struct {
 var instance: HINSTANCE = null;
 var rtf_ptr: ?[*:0]const u8 = null;
 var edit_hwnd: HWND = null;
+var background_brush: HBRUSH = null;
 
 pub fn show(allocator: std.mem.Allocator, title: []const u8, text: []const u8) !void {
     const rich_edit_dll = std.unicode.utf8ToUtf16LeStringLiteral("Msftedit.dll");
@@ -128,6 +136,7 @@ pub fn show(allocator: std.mem.Allocator, title: []const u8, text: []const u8) !
 
     const class_name = std.unicode.utf8ToUtf16LeStringLiteral("zmd_window");
     instance = GetModuleHandleW(null);
+    background_brush = CreateSolidBrush(dark_background);
 
     const wc = WNDCLASSW{
         .style = CS_HREDRAW | CS_VREDRAW,
@@ -137,7 +146,7 @@ pub fn show(allocator: std.mem.Allocator, title: []const u8, text: []const u8) !
         .hInstance = instance,
         .hIcon = null,
         .hCursor = null,
-        .hbrBackground = null,
+        .hbrBackground = background_brush,
         .lpszMenuName = null,
         .lpszClassName = class_name.ptr,
     };
@@ -187,7 +196,7 @@ fn windowProc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) callconv(.w
         WM_CREATE => {
             const edit_class = std.unicode.utf8ToUtf16LeStringLiteral("RICHEDIT50W");
             edit_hwnd = CreateWindowExW(
-                WS_EX_CLIENTEDGE,
+                0,
                 edit_class.ptr,
                 null,
                 WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | ES_NOHIDESEL,
@@ -201,6 +210,8 @@ fn windowProc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) callconv(.w
                 null,
             );
             if (edit_hwnd) |edit| {
+                _ = SendMessageW(edit, EM_SETBKGNDCOLOR, 0, colorToLParam(dark_background));
+                _ = SendMessageW(edit, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, makeMargins(12, 12));
                 if (GetStockObject(DEFAULT_GUI_FONT)) |font| {
                     _ = SendMessageW(edit, WM_SETFONT, @intFromPtr(font), 1);
                 }
@@ -226,6 +237,18 @@ fn windowProc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) callconv(.w
 
 fn ptrToLParam(ptr: anytype) LPARAM {
     return @bitCast(@intFromPtr(ptr));
+}
+
+fn colorToLParam(color: COLORREF) LPARAM {
+    return @intCast(color);
+}
+
+fn makeMargins(left: u16, right: u16) LPARAM {
+    return @intCast(@as(u32, left) | (@as(u32, right) << 16));
+}
+
+fn rgb(r: u8, g: u8, b: u8) COLORREF {
+    return @as(COLORREF, r) | (@as(COLORREF, g) << 8) | (@as(COLORREF, b) << 16);
 }
 
 fn resizeEdit(hwnd: HWND) void {

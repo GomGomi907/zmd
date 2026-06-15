@@ -122,7 +122,7 @@ pub fn show(allocator: std.mem.Allocator, title: []const u8, text: []const u8) !
     const black = x.black_pixel(display, screen);
     const white = x.white_pixel(display, screen);
 
-    const window = x.create_simple_window(display, root, 80, 80, 920, 720, 1, black, white);
+    const window = x.create_simple_window(display, root, 80, 80, 920, 720, 1, black, black);
     if (window == 0) return error.WindowInitFailed;
     defer _ = x.destroy_window(display, window);
 
@@ -134,7 +134,7 @@ pub fn show(allocator: std.mem.Allocator, title: []const u8, text: []const u8) !
 
     const gc = x.create_gc(display, window, 0, null) orelse return error.WindowInitFailed;
     defer _ = x.free_gc(display, gc);
-    _ = x.set_foreground(display, gc, black);
+    _ = x.set_foreground(display, gc, white);
     _ = x.map_window(display, window);
 
     var height: c_int = 720;
