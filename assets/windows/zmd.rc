@@ -1,0 +1,4 @@
+#include "resource.h"
+
+IDI_ZMD_DOCUMENT ICON "zmd-doc.ico"
+1 24 "zmd.manifest"

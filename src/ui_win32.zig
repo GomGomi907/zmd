@@ -57,6 +57,7 @@ const RECT = extern struct {
 
 extern "kernel32" fn GetModuleHandleW(lpModuleName: ?LPCWSTR) callconv(.winapi) HINSTANCE;
 extern "kernel32" fn LoadLibraryW(lpLibFileName: LPCWSTR) callconv(.winapi) HINSTANCE;
+extern "user32" fn LoadIconW(hInstance: HINSTANCE, lpIconName: LPCWSTR) callconv(.winapi) HICON;
 extern "user32" fn RegisterClassW(lpWndClass: *const WNDCLASSW) callconv(.winapi) ATOM;
 extern "user32" fn CreateWindowExW(
     dwExStyle: DWORD,
@@ -115,6 +116,7 @@ const DEFAULT_GUI_FONT: c_int = 17;
 const ST_DEFAULT: DWORD = 0;
 const CP_UTF8: UINT = 65001;
 const dark_background: COLORREF = rgb(17, 24, 39);
+const app_icon_id: u16 = 1;
 
 const SETTEXTEX = extern struct {
     flags: DWORD,
@@ -144,7 +146,7 @@ pub fn show(allocator: std.mem.Allocator, title: []const u8, text: []const u8) !
         .cbClsExtra = 0,
         .cbWndExtra = 0,
         .hInstance = instance,
-        .hIcon = null,
+        .hIcon = LoadIconW(instance, makeIntResourceW(app_icon_id)),
         .hCursor = null,
         .hbrBackground = background_brush,
         .lpszMenuName = null,
@@ -237,6 +239,10 @@ fn windowProc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) callconv(.w
 
 fn ptrToLParam(ptr: anytype) LPARAM {
     return @bitCast(@intFromPtr(ptr));
+}
+
+fn makeIntResourceW(id: u16) LPCWSTR {
+    return @ptrFromInt(id);
 }
 
 fn colorToLParam(color: COLORREF) LPARAM {

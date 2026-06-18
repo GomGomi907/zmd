@@ -25,6 +25,7 @@ The executable is installed under `zig-out/bin/`:
 
 - Linux: `zig-out/bin/zmd`
 - Windows: `zig-out/bin/zmd.exe`
+- Windows installer: `zig-out/bin/zmd-setup.exe`
 
 Windows builds default to the GUI subsystem so double-click/open-with usage does not need a terminal. For stdout smoke tests, build the console variant:
 
@@ -46,13 +47,17 @@ zmd --help
 zmd --version
 zmd path/to/file.md          # native read-only viewer window
 zmd --dump path/to/file.md   # terminal render for tests/pipes
+zmd --install-file-association
+zmd --uninstall-file-association
 ```
+
+For Windows release distribution, ship `zmd-setup.exe`. The installer is the same self-contained app binary under a setup filename: it copies itself to `%LOCALAPPDATA%\Programs\zmd\zmd.exe` and registers zmd as a Markdown "Open with" app for the current user. The portable `zmd.exe` remains useful for direct CLI/viewer use.
 
 ## Platform UI
 
 - Windows: direct Win32 window with a read-only `RICHEDIT50W` control. Markdown source is converted to RTF before display, so common formatting is visible immediately in viewer mode.
 - Linux: runtime-loaded X11 window. It needs an X11/Xwayland session with `libX11.so.6` available.
-- File association installers are not included yet. Use the OS "Open with..." flow and point `.md` files at the built `zmd` executable.
+- Windows file association: run `zig-out/bin/zmd.exe --install-file-association` to register `zmd` as a Markdown "Open with" app for the current user. Then choose `zmd` from Windows "Open with..." and select "Always" to make `.md` files open with `zmd` and display the embedded zmd document icon. Run `zig-out/bin/zmd.exe --uninstall-file-association` to remove zmd's registration keys.
 
 ## Current Markdown coverage
 
@@ -86,6 +91,6 @@ The std-only renderer currently handles enough common syntax for first-pass read
 - HTML blocks/tags are shown as inert readable text rather than interpreted markup.
 - Footnotes and many edge cases are not yet fully rendered.
 - Linux GUI text rendering is intentionally minimal X11 drawing; Unicode shaping and rich layout are not implemented yet.
-- OS-level file association is manual for now; the app already accepts a file path as its first argument.
+- Windows cannot be forced to change the default app by this executable; the user must choose "Always" in the Windows "Open with..." flow.
 
 If lightweight/single-executable constraints materially erode Markdown support, that tradeoff should be reported and optimized before accepting the gap.

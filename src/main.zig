@@ -2,6 +2,8 @@ const std = @import("std");
 const builtin = @import("builtin");
 const Io = std.Io;
 const build_options = @import("build_options");
+const file_assoc = @import("file_assoc.zig");
+const setup = @import("setup.zig");
 const ui = @import("ui.zig");
 const zmd = @import("zmd");
 
@@ -13,13 +15,16 @@ const usage =
     \\Usage:
     \\  zmd <file.md>          Open a read-only native viewer window
     \\  zmd --dump <file.md>   Render Markdown to stdout for tests/pipes
+    \\  zmd --install-file-association
+    \\                         Register zmd as a Windows Markdown open-with app
+    \\  zmd --uninstall-file-association
+    \\                         Remove zmd's Windows Markdown open-with registry keys
     \\  zmd --help             Show this help
     \\  zmd --version          Show version
     \\
     \\Status:
     \\  Native GUI slice: Win32 on Windows, runtime-loaded X11 on Linux.
-    \\  Full CommonMark/GFM coverage and OS association installers remain
-    \\  explicit follow-up milestones.
+    \\  Full CommonMark/GFM coverage remains an explicit follow-up milestone.
     \\
 ;
 
@@ -28,19 +33,37 @@ pub fn main(init: std.process.Init) !void {
     const args = try init.minimal.args.toSlice(arena);
     const io = init.io;
 
-    var stdout_buffer: [4096]u8 = undefined;
-    var stdout_file_writer: Io.File.Writer = .init(.stdout(), io, &stdout_buffer);
-    const stdout = &stdout_file_writer.interface;
-    defer stdout.flush() catch {};
+    if (args.len > 0 and setup.isSetupExecutable(args[0])) {
+        try setup.run(arena, io, init.environ_map, args);
+        return;
+    }
 
     if (args.len == 1 or (args.len == 2 and std.mem.eql(u8, args[1], "--help"))) {
-        try showInfo(arena, stdout, "zmd help", usage);
+        try showInfo(arena, io, "zmd help", usage);
         return;
     }
 
     if (args.len == 2 and std.mem.eql(u8, args[1], "--version")) {
         const version_text = try std.fmt.allocPrint(arena, "zmd {s}\n", .{zmd.version});
-        try showInfo(arena, stdout, "zmd version", version_text);
+        try showInfo(arena, io, "zmd version", version_text);
+        return;
+    }
+
+    if (args.len == 2 and std.mem.eql(u8, args[1], "--install-file-association")) {
+        file_assoc.install(arena) catch |err| {
+            const message = try std.fmt.allocPrint(arena, "Unable to register Windows Markdown file association: {s}", .{@errorName(err)});
+            fatal(arena, "zmd error", message, 1);
+        };
+        try showInfo(arena, io, "zmd file association", "Registered zmd for Windows Markdown files.\n\nUse Open with > Choose another app > zmd, then select Always to make .md files open with zmd and show the zmd document icon.\n");
+        return;
+    }
+
+    if (args.len == 2 and std.mem.eql(u8, args[1], "--uninstall-file-association")) {
+        file_assoc.uninstall(arena) catch |err| {
+            const message = try std.fmt.allocPrint(arena, "Unable to remove Windows Markdown file association: {s}", .{@errorName(err)});
+            fatal(arena, "zmd error", message, 1);
+        };
+        try showInfo(arena, io, "zmd file association", "Removed zmd's Windows Markdown file association registration.\n");
         return;
     }
 
@@ -66,7 +89,7 @@ pub fn main(init: std.process.Init) !void {
             const message = try std.fmt.allocPrint(arena, "Unable to render '{s}': {s}", .{ path, @errorName(err) });
             fatal(arena, "zmd error", message, 1);
         };
-        try stdout.writeAll(rendered);
+        try writeStdout(io, rendered);
         return;
     }
 
@@ -88,12 +111,20 @@ pub fn main(init: std.process.Init) !void {
     };
 }
 
-fn showInfo(allocator: std.mem.Allocator, stdout: *Io.Writer, title: []const u8, text: []const u8) !void {
+fn showInfo(allocator: std.mem.Allocator, io: Io, title: []const u8, text: []const u8) !void {
     if (build_options.windows_gui) {
         ui.alert(allocator, title, text);
     } else {
-        try stdout.writeAll(text);
+        try writeStdout(io, text);
     }
+}
+
+fn writeStdout(io: Io, text: []const u8) !void {
+    var stdout_buffer: [4096]u8 = undefined;
+    var stdout_file_writer: Io.File.Writer = .init(.stdout(), io, &stdout_buffer);
+    const stdout = &stdout_file_writer.interface;
+    defer stdout.flush() catch {};
+    try stdout.writeAll(text);
 }
 
 fn fatal(allocator: std.mem.Allocator, title: []const u8, message: []const u8, code: u8) noreturn {

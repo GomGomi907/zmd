@@ -1,0 +1,1 @@
+#define IDI_ZMD_DOCUMENT 1
