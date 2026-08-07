@@ -33,6 +33,7 @@ pub fn build(b: *std.Build) void {
     if (target.result.os.tag == .windows) {
         exe.root_module.linkSystemLibrary("user32", .{});
         exe.root_module.linkSystemLibrary("gdi32", .{});
+        exe.root_module.linkSystemLibrary("dwmapi", .{});
         exe.root_module.linkSystemLibrary("advapi32", .{});
         exe.root_module.linkSystemLibrary("shell32", .{});
         exe.root_module.addWin32ResourceFile(.{
@@ -61,6 +62,7 @@ pub fn build(b: *std.Build) void {
         setup.subsystem = .windows;
         setup.root_module.linkSystemLibrary("user32", .{});
         setup.root_module.linkSystemLibrary("gdi32", .{});
+        setup.root_module.linkSystemLibrary("dwmapi", .{});
         setup.root_module.linkSystemLibrary("advapi32", .{});
         setup.root_module.linkSystemLibrary("shell32", .{});
         setup.root_module.addWin32ResourceFile(.{
@@ -84,9 +86,41 @@ pub fn build(b: *std.Build) void {
     const exe_tests = b.addTest(.{ .root_module = exe.root_module });
     const run_exe_tests = b.addRunArtifact(exe_tests);
 
+    const image_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/image.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "zmd", .module = zmd_mod },
+            },
+        }),
+    });
+    const run_image_tests = b.addRunArtifact(image_tests);
+
+    var run_ui_tests: ?*std.Build.Step.Run = null;
+    if (target.result.os.tag == .windows) {
+        const ui_tests = b.addTest(.{
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("src/ui_win32.zig"),
+                .target = target,
+                .optimize = optimize,
+                .imports = &.{
+                    .{ .name = "zmd", .module = zmd_mod },
+                },
+            }),
+        });
+        ui_tests.root_module.linkSystemLibrary("user32", .{});
+        ui_tests.root_module.linkSystemLibrary("gdi32", .{});
+        ui_tests.root_module.linkSystemLibrary("dwmapi", .{});
+        run_ui_tests = b.addRunArtifact(ui_tests);
+    }
+
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_mod_tests.step);
     test_step.dependOn(&run_exe_tests.step);
+    test_step.dependOn(&run_image_tests.step);
+    if (run_ui_tests) |run| test_step.dependOn(&run.step);
 
     const installer_step = b.step("installer", "Build the Windows installer executable");
     if (setup_install_step) |install_step| {

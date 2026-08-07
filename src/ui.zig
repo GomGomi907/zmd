@@ -1,5 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const zmd = @import("zmd");
 
 pub const Error = error{
     UnsupportedPlatform,
@@ -11,6 +12,18 @@ pub fn show(allocator: std.mem.Allocator, title: []const u8, text: []const u8) !
     return switch (builtin.os.tag) {
         .windows => @import("ui_win32.zig").show(allocator, title, text),
         .linux => @import("ui_x11.zig").show(allocator, title, text),
+        else => Error.UnsupportedPlatform,
+    };
+}
+
+pub fn showRtfDocument(
+    allocator: std.mem.Allocator,
+    title: []const u8,
+    document: *const zmd.RtfDocument,
+    images: []const zmd.RtfImage,
+) !void {
+    return switch (builtin.os.tag) {
+        .windows => @import("ui_win32.zig").showRtfDocument(allocator, title, document, images),
         else => Error.UnsupportedPlatform,
     };
 }

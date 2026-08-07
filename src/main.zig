@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const Io = std.Io;
 const build_options = @import("build_options");
 const file_assoc = @import("file_assoc.zig");
+const image_loader = @import("image.zig");
 const setup = @import("setup.zig");
 const ui = @import("ui.zig");
 const zmd = @import("zmd");
@@ -33,9 +34,11 @@ pub fn main(init: std.process.Init) !void {
     const args = try init.minimal.args.toSlice(arena);
     const io = init.io;
 
-    if (args.len > 0 and setup.isSetupExecutable(args[0])) {
-        try setup.run(arena, io, init.environ_map, args);
-        return;
+    if (builtin.os.tag == .windows) {
+        if (args.len > 0 and setup.isSetupExecutable(args[0])) {
+            try setup.run(arena, io, init.environ_map, args);
+            return;
+        }
     }
 
     if (args.len == 1 or (args.len == 2 and std.mem.eql(u8, args[1], "--help"))) {
@@ -93,18 +96,32 @@ pub fn main(init: std.process.Init) !void {
         return;
     }
 
-    const rendered = switch (builtin.os.tag) {
-        .windows => zmd.renderRtf(arena, input) catch |err| {
+    const title = try std.fmt.allocPrint(arena, "{s} — zmd", .{std.fs.path.basename(path)});
+
+    if (builtin.os.tag == .windows) {
+        var document = zmd.renderRtfDocument(arena, input) catch |err| {
             const message = try std.fmt.allocPrint(arena, "Unable to render formatted Markdown '{s}': {s}", .{ path, @errorName(err) });
             fatal(arena, "zmd error", message, 1);
-        },
-        else => zmd.render(arena, input) catch |err| {
-            const message = try std.fmt.allocPrint(arena, "Unable to render Markdown '{s}': {s}", .{ path, @errorName(err) });
-            fatal(arena, "zmd error", message, 1);
-        },
-    };
+        };
+        defer document.deinit(arena);
 
-    const title = try std.fmt.allocPrint(arena, "zmd - {s}", .{path});
+        var images = image_loader.loadLocalRtfImages(arena, io, path, document.image_sources) catch |err| {
+            const message = try std.fmt.allocPrint(arena, "Unable to load images for '{s}': {s}", .{ path, @errorName(err) });
+            fatal(arena, "zmd error", message, 1);
+        };
+        defer images.deinit(arena);
+
+        ui.showRtfDocument(arena, title, &document, images.items) catch |err| {
+            const message = try std.fmt.allocPrint(arena, "Unable to open native viewer: {s}\n\nUse `zmd --dump <file.md>` for terminal output.", .{@errorName(err)});
+            fatal(arena, "zmd error", message, 1);
+        };
+        return;
+    }
+
+    const rendered = zmd.render(arena, input) catch |err| {
+        const message = try std.fmt.allocPrint(arena, "Unable to render Markdown '{s}': {s}", .{ path, @errorName(err) });
+        fatal(arena, "zmd error", message, 1);
+    };
     ui.show(arena, title, rendered) catch |err| {
         const message = try std.fmt.allocPrint(arena, "Unable to open native viewer: {s}\n\nUse `zmd --dump <file.md>` for terminal output.", .{@errorName(err)});
         fatal(arena, "zmd error", message, 1);

@@ -78,16 +78,16 @@ The std-only renderer currently handles enough common syntax for first-pass read
 - inline delimiter handling that preserves underscore/strikethrough intraword identifiers like `snake_case` and `abc~~def~~ghi`, supports intraword asterisk emphasis, and preserves whitespace-only delimiter literals
 - basic/common plus CommonMark sample, Latin-1, Greek/math, typography/symbol, URL, and selected rare HTML5 named entity decoding, and numeric HTML entity decoding with CommonMark digit limits, HTML5 C1 remapping, invalid numeric references as replacement characters, and overlength numeric refs preserved literally
 - UTF-8/Unicode text through RTF Unicode escapes in the Windows formatted viewer, including UTF-8 BOM at file start and NUL replacement handling
-- tables preserved as readable text
-- inline, full/collapsed reference, and shortcut reference image syntax as a readable placeholder with inline-rendered alt text that strips nested link destinations
+- GFM-style tables rendered as bordered, aligned grids in the Windows formatted viewer, including inline formatting, escaped pipes, header styling, alternating row shading, and left/center/right column alignment; preserved as readable text in terminal and Linux output
+- inline, full/collapsed reference, and shortcut reference image syntax, with local PNG, JPEG, and BMP content embedded in the Windows viewer, paths resolved relative to the Markdown file (including percent-encoded paths), proportional downscaling for the viewer surface, resize-end/debounced adaptation to the available window space without enlarging beyond the source or a comfortable display cap, and readable alt-text placeholders when a file is missing or unsupported
 - block-start raw HTML lines as inert readable text
 - multi-line HTML comments, processing instructions, uppercase declarations, CDATA blocks, complete-tag type-7 blocks with paragraph non-interruption, and common raw HTML blocks including the CommonMark type-6 block-level tag list with blank-line termination and blockquote/list plus nested quoted-list/ordered-list container inertness and type-1 closing-tag and comment/CDATA closing-marker termination plus lowercase declaration non-block handling plus type-7 paragraph non-interruption as inert readable text
 
 ## Known limitations
 
 - This is not a full CommonMark/GFM implementation.
-- Tables are preserved textually rather than laid out as grid widgets.
-- Images are shown as placeholders instead of decoded image content.
+- Table grids are currently available only in the Windows formatted viewer; terminal and minimal Linux output preserve their readable Markdown text.
+- Remote images, SVG, animated GIF, and image display in the minimal Linux X11 viewer are not yet supported; they remain readable alt-text placeholders.
 - HTML blocks/tags are shown as inert readable text rather than interpreted markup.
 - Footnotes and many edge cases are not yet fully rendered.
 - Linux GUI text rendering is intentionally minimal X11 drawing; Unicode shaping and rich layout are not implemented yet.

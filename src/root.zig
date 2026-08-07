@@ -1,11 +1,69 @@
 const std = @import("std");
 
-pub const version = "0.1.0";
+pub const version = "0.2.0";
+
+pub const RtfImageFormat = enum {
+    png,
+    jpeg,
+    dib,
+};
+
+pub const RtfImage = struct {
+    source: []const u8,
+    data: []const u8,
+    width: u32,
+    height: u32,
+    format: RtfImageFormat,
+};
+
+pub const RtfImageBounds = struct {
+    max_width: u32 = 800,
+    max_height: u32 = 560,
+};
+
+pub const RtfDocument = struct {
+    template: []u8,
+    image_sources: [][]const u8,
+
+    pub fn deinit(self: *RtfDocument, allocator: std.mem.Allocator) void {
+        allocator.free(self.image_sources);
+        allocator.free(self.template);
+        self.* = undefined;
+    }
+
+    pub fn finish(self: RtfDocument, allocator: std.mem.Allocator, images: []const RtfImage) ![]u8 {
+        return self.finishWithImageBounds(allocator, images, .{});
+    }
+
+    pub fn finishWithImageBounds(
+        self: RtfDocument,
+        allocator: std.mem.Allocator,
+        images: []const RtfImage,
+        bounds: RtfImageBounds,
+    ) ![]u8 {
+        return finishRtfDocument(allocator, self.template, images, bounds);
+    }
+
+    pub fn finishWithImageBoundsZ(
+        self: RtfDocument,
+        allocator: std.mem.Allocator,
+        images: []const RtfImage,
+        bounds: RtfImageBounds,
+    ) ![:0]u8 {
+        return finishRtfDocumentZ(allocator, self.template, images, bounds);
+    }
+};
+
+const rtf_image_start = "\x00zmd-image\x00";
+const rtf_image_alt = "\x00zmd-alt\x00";
+const rtf_image_fallback = "\x00zmd-fallback\x00";
+const rtf_image_end = "\x00zmd-end\x00";
+const max_rtf_embedded_image_bytes = 32 * 1024 * 1024;
 
 const rtf_header =
     "{\\rtf1\\ansi\\ansicpg65001\\deff0" ++
     "{\\fonttbl{\\f0 Segoe UI;}{\\f1 Consolas;}}" ++
-    "{\\colortbl;\\red229\\green231\\blue235;\\red156\\green163\\blue175;\\red96\\green165\\blue250;\\red31\\green41\\blue55;}" ++
+    "{\\colortbl;\\red230\\green237\\blue243;\\red139\\green148\\blue158;\\red121\\green192\\blue255;\\red22\\green27\\blue34;\\red48\\green54\\blue61;}" ++
     "\\viewkind4\\uc1\\pard\\f0\\fs22\\cf1\n";
 
 const TaskItem = struct {
@@ -292,6 +350,20 @@ const ActiveContainerFence = struct {
     quote_level: usize,
     indent_level: usize,
 };
+
+const TableAlignment = enum {
+    left,
+    center,
+    right,
+};
+
+const ActiveRtfTable = struct {
+    alignments: []TableAlignment,
+    body_row_index: usize = 0,
+};
+
+const max_table_columns = 32;
+const rtf_table_width_twips: usize = 11880;
 
 fn stripUtf8Bom(input: []const u8) []const u8 {
     if (std.mem.startsWith(u8, input, "\xEF\xBB\xBF")) return input[3..];
@@ -1400,6 +1472,19 @@ pub fn render(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
 }
 
 pub fn renderRtf(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
+    var document = try renderRtfDocument(allocator, input);
+    defer document.deinit(allocator);
+    return document.finish(allocator, &.{});
+}
+
+pub fn renderRtfDocument(allocator: std.mem.Allocator, input: []const u8) !RtfDocument {
+    const template = try renderRtfTemplate(allocator, input);
+    errdefer allocator.free(template);
+    const image_sources = try collectRtfImageSources(allocator, template);
+    return .{ .template = template, .image_sources = image_sources };
+}
+
+fn renderRtfTemplate(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
     const normalized = try normalizeInput(allocator, input);
     defer if (normalized.owned) |owned| allocator.free(owned);
     const source = normalized.text;
@@ -1418,6 +1503,8 @@ pub fn renderRtf(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
     var active_html_block: ?HtmlBlock = null;
     var active_container_html: ?ActiveContainerHtml = null;
     var active_container_fence: ?ActiveContainerFence = null;
+    var active_table: ?ActiveRtfTable = null;
+    defer if (active_table) |table| allocator.free(table.alignments);
     var list_context = false;
     var lazy_blockquote_level: usize = 0;
     var lazy_list_level: usize = 0;
@@ -1489,6 +1576,18 @@ pub fn renderRtf(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
             active_container_html = null;
         }
 
+        if (active_table) |*table| {
+            if (isRtfTableBodyLine(line, trimmed)) {
+                const cells = try parseTableCells(allocator, trimmed);
+                defer allocator.free(cells);
+                try appendRtfTableRow(&out, allocator, cells, table.alignments, false, table.body_row_index, refs);
+                table.body_row_index += 1;
+                continue;
+            }
+            allocator.free(table.alignments);
+            active_table = null;
+        }
+
         if (pending_container) |current| {
             if (pendingContainerSetextLevel(current, line, trimmed)) |level| {
                 try flushPendingRtfContainerHeading(&out, allocator, &pending_container, level, refs);
@@ -1507,6 +1606,26 @@ pub fn renderRtf(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
 
         if (active_fence == null) {
             if (pending_plain) |pending| {
+                if (pending_owned == null and !pending_hard_break and hasUnescapedTablePipe(pending)) {
+                    if (try parseTableDelimiter(allocator, trimmed)) |alignments| {
+                        const header_cells = try parseTableCells(allocator, pending);
+                        defer allocator.free(header_cells);
+                        if (header_cells.len == alignments.len) {
+                            try appendRtfTableRow(&out, allocator, header_cells, alignments, true, 0, refs);
+                            active_table = .{ .alignments = alignments };
+                            if (pending_heading_owned) |owned| {
+                                allocator.free(owned);
+                                pending_heading_owned = null;
+                            }
+                            pending_plain = null;
+                            pending_heading_plain = null;
+                            pending_hard_break = false;
+                            list_context = false;
+                            continue;
+                        }
+                        allocator.free(alignments);
+                    }
+                }
                 if (setextHeadingLevel(line)) |level| {
                     try appendRtfHeading(&out, allocator, pending_heading_plain orelse pending, level, refs);
                     if (pending_owned) |owned| {
@@ -2564,6 +2683,118 @@ fn appendRtfContainerThematicBreak(out: *std.ArrayList(u8), allocator: std.mem.A
     try out.appendSlice(allocator, prefix);
     try appendRtfEscaped(out, allocator, "------------------------------");
     try out.appendSlice(allocator, suffix);
+}
+
+fn hasUnescapedTablePipe(line: []const u8) bool {
+    for (line, 0..) |ch, index| {
+        if (ch == '|' and !isEscapedAt(line, index)) return true;
+    }
+    return false;
+}
+
+fn parseTableCells(allocator: std.mem.Allocator, line: []const u8) ![][]const u8 {
+    const row = std.mem.trim(u8, line, " \t");
+    var cells: std.ArrayList([]const u8) = .empty;
+    errdefer cells.deinit(allocator);
+
+    var start: usize = 0;
+    var end = row.len;
+    if (start < end and row[start] == '|' and !isEscapedAt(row, start)) start += 1;
+    if (end > start and row[end - 1] == '|' and !isEscapedAt(row, end - 1)) end -= 1;
+
+    var cell_start = start;
+    var index = start;
+    while (index < end) : (index += 1) {
+        if (row[index] != '|' or isEscapedAt(row, index)) continue;
+        try cells.append(allocator, std.mem.trim(u8, row[cell_start..index], " \t"));
+        cell_start = index + 1;
+    }
+    try cells.append(allocator, std.mem.trim(u8, row[cell_start..end], " \t"));
+    return cells.toOwnedSlice(allocator);
+}
+
+fn parseTableDelimiter(allocator: std.mem.Allocator, line: []const u8) !?[]TableAlignment {
+    const cells = try parseTableCells(allocator, line);
+    defer allocator.free(cells);
+    if (cells.len == 0 or cells.len > max_table_columns) return null;
+
+    const alignments = try allocator.alloc(TableAlignment, cells.len);
+    errdefer allocator.free(alignments);
+    for (cells, alignments) |cell, *alignment| {
+        var marker = std.mem.trim(u8, cell, " \t");
+        const left_colon = marker.len > 0 and marker[0] == ':';
+        if (left_colon) marker = marker[1..];
+        const right_colon = marker.len > 0 and marker[marker.len - 1] == ':';
+        if (right_colon) marker = marker[0 .. marker.len - 1];
+        if (marker.len < 3) {
+            allocator.free(alignments);
+            return null;
+        }
+        for (marker) |ch| {
+            if (ch != '-') {
+                allocator.free(alignments);
+                return null;
+            }
+        }
+        alignment.* = if (left_colon and right_colon)
+            .center
+        else if (right_colon)
+            .right
+        else
+            .left;
+    }
+    return alignments;
+}
+
+fn isRtfTableBodyLine(line: []const u8, trimmed: []const u8) bool {
+    if (trimmed.len == 0 or indentedCodeText(line) != null) return false;
+    if (std.mem.startsWith(u8, trimmed, "|")) return true;
+    return isPlainParagraphContinuationLine(line, trimmed, false);
+}
+
+fn appendRtfTableRow(
+    out: *std.ArrayList(u8),
+    allocator: std.mem.Allocator,
+    cells: []const []const u8,
+    alignments: []const TableAlignment,
+    header: bool,
+    body_row_index: usize,
+    refs: []const ReferenceDef,
+) !void {
+    if (alignments.len == 0) return;
+
+    try out.appendSlice(allocator, "\\trowd\\trgaph90\\trleft0\\trkeep\\trautofit1");
+    for (alignments, 0..) |_, column| {
+        try out.appendSlice(
+            allocator,
+            "\\clvertalc\\clpadt80\\clpadb80\\clpadl120\\clpadr120" ++
+                "\\clpadft3\\clpadfb3\\clpadfl3\\clpadfr3" ++
+                "\\clbrdrt\\brdrs\\brdrw10\\brdrcf5" ++
+                "\\clbrdrb\\brdrs\\brdrw10\\brdrcf5" ++
+                "\\clbrdrl\\brdrs\\brdrw10\\brdrcf5" ++
+                "\\clbrdrr\\brdrs\\brdrw10\\brdrcf5",
+        );
+        if (header or body_row_index % 2 == 1) try out.appendSlice(allocator, "\\clcbpat4");
+        const cell_right = rtf_table_width_twips * (column + 1) / alignments.len;
+        const cell_boundary = try std.fmt.allocPrint(allocator, "\\cellx{}", .{cell_right});
+        defer allocator.free(cell_boundary);
+        try out.appendSlice(allocator, cell_boundary);
+    }
+    try out.append(allocator, '\n');
+
+    for (alignments, 0..) |alignment, column| {
+        try out.appendSlice(allocator, "\\pard\\intbl\\sa40\\f0\\fs22\\cf1");
+        try out.appendSlice(allocator, switch (alignment) {
+            .left => "\\ql ",
+            .center => "\\qc ",
+            .right => "\\qr ",
+        });
+        if (header) try out.appendSlice(allocator, "\\b ");
+        if (column < cells.len) try appendInlineRtf(out, allocator, cells[column], refs);
+        if (header) try out.appendSlice(allocator, "\\b0 ");
+        try out.appendSlice(allocator, "\\cell\n");
+    }
+    try out.appendSlice(allocator, "\\row\n");
 }
 
 fn containerFenceContent(container: ActiveContainerFence, line: []const u8, trimmed: []const u8) ?[]const u8 {
@@ -5521,11 +5752,7 @@ fn appendInlineRtf(out: *std.ArrayList(u8), allocator: std.mem.Allocator, text: 
                 if (close_bracket + 1 < text.len and text[close_bracket + 1] == '(') {
                     if (findLinkCloseParen(text, close_bracket + 2)) |close_paren| {
                         if (inlineLinkDestination(text[close_bracket + 2 .. close_paren])) |dest| {
-                            try out.appendSlice(allocator, "\\cf2 [image: ");
-                            try appendImageAltRtf(out, allocator, text[i + 2 .. close_bracket], refs);
-                            try out.appendSlice(allocator, "] ");
-                            try appendEscapedMarkdownTextRtf(out, allocator, dest);
-                            try out.appendSlice(allocator, "\\cf1 ");
+                            try appendRtfImageToken(out, allocator, text[i + 2 .. close_bracket], dest, refs);
                             i = close_paren + 1;
                             continue;
                         }
@@ -5537,21 +5764,13 @@ fn appendInlineRtf(out: *std.ArrayList(u8), allocator: std.mem.Allocator, text: 
                         const explicit_label = text[close_bracket + 2 .. close_label];
                         const label = if (explicit_label.len == 0) text[i + 2 .. close_bracket] else explicit_label;
                         if (findReference(refs, label)) |dest| {
-                            try out.appendSlice(allocator, "\\cf2 [image: ");
-                            try appendImageAltRtf(out, allocator, text[i + 2 .. close_bracket], refs);
-                            try out.appendSlice(allocator, "] ");
-                            try appendEscapedMarkdownTextRtf(out, allocator, dest);
-                            try out.appendSlice(allocator, "\\cf1 ");
+                            try appendRtfImageToken(out, allocator, text[i + 2 .. close_bracket], dest, refs);
                             i = close_label + 1;
                             continue;
                         }
                     }
                 } else if (findReference(refs, text[i + 2 .. close_bracket])) |dest| {
-                    try out.appendSlice(allocator, "\\cf2 [image: ");
-                    try appendImageAltRtf(out, allocator, text[i + 2 .. close_bracket], refs);
-                    try out.appendSlice(allocator, "] ");
-                    try appendEscapedMarkdownTextRtf(out, allocator, dest);
-                    try out.appendSlice(allocator, "\\cf1 ");
+                    try appendRtfImageToken(out, allocator, text[i + 2 .. close_bracket], dest, refs);
                     i = close_bracket + 1;
                     continue;
                 }
@@ -5760,11 +5979,205 @@ fn appendInlineRtf(out: *std.ArrayList(u8), allocator: std.mem.Allocator, text: 
     }
 }
 
-fn appendImageAltRtf(out: *std.ArrayList(u8), allocator: std.mem.Allocator, text: []const u8, refs: []const ReferenceDef) !void {
-    var plain: std.ArrayList(u8) = .empty;
-    defer plain.deinit(allocator);
-    try appendInlineNoLinks(&plain, allocator, text, refs);
-    try appendRtfEscaped(out, allocator, plain.items);
+fn appendRtfImageToken(
+    out: *std.ArrayList(u8),
+    allocator: std.mem.Allocator,
+    alt: []const u8,
+    destination: []const u8,
+    refs: []const ReferenceDef,
+) !void {
+    var decoded_destination: std.ArrayList(u8) = .empty;
+    defer decoded_destination.deinit(allocator);
+    try appendEscapedMarkdownText(&decoded_destination, allocator, destination);
+
+    var plain_alt: std.ArrayList(u8) = .empty;
+    defer plain_alt.deinit(allocator);
+    try appendInlineNoLinks(&plain_alt, allocator, alt, refs);
+
+    try out.appendSlice(allocator, rtf_image_start);
+    try out.appendSlice(allocator, decoded_destination.items);
+    try out.appendSlice(allocator, rtf_image_alt);
+    try out.appendSlice(allocator, plain_alt.items);
+    try out.appendSlice(allocator, rtf_image_fallback);
+    try out.appendSlice(allocator, "\\cf2 [image: ");
+    try appendRtfEscaped(out, allocator, plain_alt.items);
+    try out.appendSlice(allocator, "] ");
+    try appendEscapedMarkdownTextRtf(out, allocator, destination);
+    try out.appendSlice(allocator, "\\cf1 ");
+    try out.appendSlice(allocator, rtf_image_end);
+}
+
+const RtfImageToken = struct {
+    start: usize,
+    end: usize,
+    source: []const u8,
+    alt: []const u8,
+    fallback: []const u8,
+};
+
+fn nextRtfImageToken(text: []const u8, from: usize) ?RtfImageToken {
+    if (from >= text.len) return null;
+    const relative_start = std.mem.indexOf(u8, text[from..], rtf_image_start) orelse return null;
+    const start = from + relative_start;
+    const source_start = start + rtf_image_start.len;
+    const alt_marker = indexOfFrom(text, source_start, rtf_image_alt) orelse return null;
+    const alt_start = alt_marker + rtf_image_alt.len;
+    const fallback_marker = indexOfFrom(text, alt_start, rtf_image_fallback) orelse return null;
+    const fallback_start = fallback_marker + rtf_image_fallback.len;
+    const end_marker = indexOfFrom(text, fallback_start, rtf_image_end) orelse return null;
+
+    return .{
+        .start = start,
+        .end = end_marker + rtf_image_end.len,
+        .source = text[source_start..alt_marker],
+        .alt = text[alt_start..fallback_marker],
+        .fallback = text[fallback_start..end_marker],
+    };
+}
+
+fn indexOfFrom(text: []const u8, from: usize, needle: []const u8) ?usize {
+    if (from > text.len) return null;
+    const relative = std.mem.indexOf(u8, text[from..], needle) orelse return null;
+    return from + relative;
+}
+
+fn collectRtfImageSources(allocator: std.mem.Allocator, template: []const u8) ![][]const u8 {
+    var sources: std.ArrayList([]const u8) = .empty;
+    errdefer sources.deinit(allocator);
+
+    var cursor: usize = 0;
+    while (nextRtfImageToken(template, cursor)) |token| {
+        var duplicate = false;
+        for (sources.items) |source| {
+            if (std.mem.eql(u8, source, token.source)) {
+                duplicate = true;
+                break;
+            }
+        }
+        if (!duplicate) try sources.append(allocator, token.source);
+        cursor = token.end;
+    }
+
+    return sources.toOwnedSlice(allocator);
+}
+
+fn finishRtfDocument(
+    allocator: std.mem.Allocator,
+    template: []const u8,
+    images: []const RtfImage,
+    bounds: RtfImageBounds,
+) ![]u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+    try appendFinishedRtfDocument(&out, allocator, template, images, bounds);
+    return out.toOwnedSlice(allocator);
+}
+
+fn finishRtfDocumentZ(
+    allocator: std.mem.Allocator,
+    template: []const u8,
+    images: []const RtfImage,
+    bounds: RtfImageBounds,
+) ![:0]u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+    try appendFinishedRtfDocument(&out, allocator, template, images, bounds);
+    return out.toOwnedSliceSentinel(allocator, 0);
+}
+
+fn appendFinishedRtfDocument(
+    out: *std.ArrayList(u8),
+    allocator: std.mem.Allocator,
+    template: []const u8,
+    images: []const RtfImage,
+    bounds: RtfImageBounds,
+) !void {
+    var cursor: usize = 0;
+    var embedded_image_bytes: usize = 0;
+    while (nextRtfImageToken(template, cursor)) |token| {
+        try out.appendSlice(allocator, template[cursor..token.start]);
+        if (findRtfImage(images, token.source)) |image| {
+            if (image.data.len <= max_rtf_embedded_image_bytes - embedded_image_bytes) {
+                try appendRtfPicture(out, allocator, image, token.alt, bounds);
+                embedded_image_bytes += image.data.len;
+            } else {
+                try out.appendSlice(allocator, token.fallback);
+            }
+        } else {
+            try out.appendSlice(allocator, token.fallback);
+        }
+        cursor = token.end;
+    }
+    try out.appendSlice(allocator, template[cursor..]);
+}
+
+fn findRtfImage(images: []const RtfImage, source: []const u8) ?RtfImage {
+    for (images) |image| {
+        if (std.mem.eql(u8, image.source, source) and image.width > 0 and image.height > 0) return image;
+    }
+    return null;
+}
+
+fn appendRtfPicture(
+    out: *std.ArrayList(u8),
+    allocator: std.mem.Allocator,
+    image: RtfImage,
+    alt: []const u8,
+    bounds: RtfImageBounds,
+) !void {
+    const display_size = fittedImageSize(image.width, image.height, bounds);
+
+    try out.appendSlice(allocator, "{\\pict{\\*\\picprop{\\sp{\\sn wzDescription}{\\sv ");
+    try appendRtfEscaped(out, allocator, alt);
+    try out.appendSlice(allocator, "}}}");
+    try out.appendSlice(allocator, switch (image.format) {
+        .png => "\\pngblip",
+        .jpeg => "\\jpegblip",
+        .dib => "\\dibitmap0",
+    });
+    try appendRtfPictureDimension(out, allocator, "\\picw", image.width);
+    try appendRtfPictureDimension(out, allocator, "\\pich", image.height);
+    try appendRtfPictureDimension(out, allocator, "\\picwgoal", display_size.width * 15);
+    try appendRtfPictureDimension(out, allocator, "\\pichgoal", display_size.height * 15);
+    try out.append(allocator, ' ');
+
+    const hex = "0123456789abcdef";
+    for (image.data, 0..) |byte, index| {
+        try out.append(allocator, hex[byte >> 4]);
+        try out.append(allocator, hex[byte & 0x0f]);
+        if ((index + 1) % 48 == 0) try out.append(allocator, '\n');
+    }
+    try out.append(allocator, '}');
+}
+
+const ImageSize = struct {
+    width: u32,
+    height: u32,
+};
+
+fn fittedImageSize(width: u32, height: u32, bounds: RtfImageBounds) ImageSize {
+    const max_width: u64 = @max(1, bounds.max_width);
+    const max_height: u64 = @max(1, bounds.max_height);
+    var fitted_width: u64 = width;
+    var fitted_height: u64 = height;
+
+    if (fitted_width > max_width) {
+        fitted_height = @max(1, fitted_height * max_width / fitted_width);
+        fitted_width = max_width;
+    }
+    if (fitted_height > max_height) {
+        fitted_width = @max(1, fitted_width * max_height / fitted_height);
+        fitted_height = max_height;
+    }
+
+    return .{ .width = @intCast(fitted_width), .height = @intCast(fitted_height) };
+}
+
+fn appendRtfPictureDimension(out: *std.ArrayList(u8), allocator: std.mem.Allocator, control: []const u8, value: u32) !void {
+    try out.appendSlice(allocator, control);
+    const decimal = try std.fmt.allocPrint(allocator, "{}", .{value});
+    defer allocator.free(decimal);
+    try out.appendSlice(allocator, decimal);
 }
 
 fn appendInlineNoLinksRtf(out: *std.ArrayList(u8), allocator: std.mem.Allocator, text: []const u8, refs: []const ReferenceDef) !void {
@@ -6935,7 +7348,7 @@ test "restores heading RTF style after inline code and links" {
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\ulnone \\f0\\cf1\\b\\fs36 \\cf2 <https://example.test/inline>") != null);
 }
 
-test "parses inline markdown in pipe-start paragraphs for RTF" {
+test "renders GFM table cells and leaves standalone inline pipes as text" {
     const input =
         \\| Header | Header |
         \\| ------ | ------ |
@@ -6952,6 +7365,8 @@ test "parses inline markdown in pipe-start paragraphs for RTF" {
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
 
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\trowd\\trgaph90") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\clcbpat4") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\i not table emphasis?\\i0") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\cf3\\ul link\\ulnone") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\cf3\\ul pipe | label\\ulnone") != null);
@@ -11255,7 +11670,7 @@ test "keeps indented code inert inside loose list items" {
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b not bold\\b0") == null);
 }
 
-test "preserves table text" {
+test "preserves table text in plain output and renders an RTF grid" {
     const input =
         \\| A | B |
         \\|---|---|
@@ -11265,6 +11680,48 @@ test "preserves table text" {
     defer std.testing.allocator.free(rendered);
     try std.testing.expect(std.mem.indexOf(u8, rendered, "| A | B |") != null);
     try std.testing.expect(std.mem.indexOf(u8, rendered, "| 1 | 2 |") != null);
+
+    const rtf = try renderRtf(std.testing.allocator, input);
+    defer std.testing.allocator.free(rtf);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\trowd\\trgaph90") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\cellx5940\\clvertalc") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b A\\b0 \\cell") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\ql 1\\cell") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "|---|---|") == null);
+}
+
+test "renders GFM table alignment inline markup and row width rules" {
+    const input =
+        \\| Left | Center | Right |
+        \\| :--- | :---: | ---: |
+        \\| escaped \| pipe | **bold** | [link](https://example.test/table) |
+        \\| short | `code` |
+        \\| extra | cells | are ignored | surplus |
+    ;
+    const rtf = try renderRtf(std.testing.allocator, input);
+    defer std.testing.allocator.free(rtf);
+
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\ql \\b Left") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\qc \\b Center") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\qr \\b Right") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "escaped | pipe") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b bold\\b0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\cf3\\ul link\\ulnone") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs20\\highlight4 code") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "surplus") == null);
+}
+
+test "does not treat a mismatched delimiter row as a table" {
+    const input =
+        \\| A | B |
+        \\| --- |
+        \\| 1 | 2 |
+    ;
+    const rtf = try renderRtf(std.testing.allocator, input);
+    defer std.testing.allocator.free(rtf);
+
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\trowd") == null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "| A | B |") != null);
 }
 
 test "renders rich text formatting for GUI" {
@@ -11286,6 +11743,47 @@ test "renders rich text formatting for GUI" {
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\u9745?\\tab task") != null);
 }
 
+test "builds an image-aware RTF document with placeholder fallback" {
+    const input =
+        \\![Plot **strong**](<images/plot (1).png>)
+        \\![Referenced][picture]
+        \\![Missing](images/missing.jpg)
+        \\
+        \\[picture]: images/reference.jpg
+    ;
+    var document = try renderRtfDocument(std.testing.allocator, input);
+    defer document.deinit(std.testing.allocator);
+
+    try std.testing.expectEqual(@as(usize, 3), document.image_sources.len);
+    try std.testing.expectEqualStrings("images/plot (1).png", document.image_sources[0]);
+    try std.testing.expectEqualStrings("images/reference.jpg", document.image_sources[1]);
+    try std.testing.expectEqualStrings("images/missing.jpg", document.image_sources[2]);
+
+    const image_bytes = [_]u8{ 0x89, 'P', 'N', 'G' };
+    const images = [_]RtfImage{.{
+        .source = document.image_sources[0],
+        .data = &image_bytes,
+        .width = 1200,
+        .height = 600,
+        .format = .png,
+    }};
+    const rtf = try document.finish(std.testing.allocator, &images);
+    defer std.testing.allocator.free(rtf);
+
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pngblip\\picw1200\\pich600\\picwgoal12000\\pichgoal6000") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "{\\sv Plot strong}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "[image: Referenced] images/reference.jpg") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "[image: Missing] images/missing.jpg") != null);
+    try std.testing.expect(std.mem.indexOfScalar(u8, rtf, 0) == null);
+
+    const narrow_rtf = try document.finishWithImageBounds(std.testing.allocator, &images, .{
+        .max_width = 320,
+        .max_height = 200,
+    });
+    defer std.testing.allocator.free(narrow_rtf);
+    try std.testing.expect(std.mem.indexOf(u8, narrow_rtf, "\\picwgoal4800\\pichgoal2400") != null);
+}
+
 test "renders ultraqa fixture rich text signals" {
     const input =
         \\# zmd UltraQA Rendering Fixture
@@ -11302,6 +11800,8 @@ test "renders ultraqa fixture rich text signals" {
         \\const std = @import("std");
         \\```
         \\| Feature | Expected visual signal |
+        \\| --- | --- |
+        \\| Heading | much larger bold title |
         \\![Alt text for image](./missing-image.png)
     ;
     const rtf = try renderRtf(std.testing.allocator, input);
@@ -11317,6 +11817,8 @@ test "renders ultraqa fixture rich text signals" {
     try std.testing.expect(std.mem.indexOf(u8, rtf, "1.\\tab ordered first item") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\i\\cf2 Blockquote") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs20\\cf2 const std") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "| Feature | Expected visual signal |") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\trowd\\trgaph90") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b Feature\\b0 \\cell") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "| Feature | Expected visual signal |") == null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "[image: Alt text for image] ./missing-image.png") != null);
 }
