@@ -17,7 +17,7 @@ zmd는 문서를 편집하지 않고 빠르게 읽기 위한 가벼운 Markdown 
 - **확대 / 축소:** `Ctrl` + `+` / `Ctrl` + `-`, 또는 `Ctrl` + 마우스 휠. `Ctrl` + `0`으로 원래 크기로 돌아갑니다.
 - **업데이트:** 문서를 표시한 뒤 백그라운드에서 새 버전을 확인합니다. 업데이트가 있으면 창을 닫을 때만 설치 여부를 묻고, 승인하면 추가 창 없이 업데이트합니다.
 
-Windows 설치 파일은 현재 디지털 서명되지 않았습니다. 서명 적용을 준비하고 있으며, 최신 상태는 아래 [Code signing policy](#code-signing-policy)에서 확인할 수 있습니다.
+Windows 설치 파일은 현재 디지털 서명되지 않았습니다. 서명 적용을 준비하고 있으며, 최신 상태는 아래 [Code signing policy](#code-signing-policy)에서 확인할 수 있습니다. 네트워크 사용에 관한 내용은 [개인정보 안내](docs/PRIVACY.md)에 정리되어 있습니다.
 
 문제가 생기면 [이슈 등록](https://github.com/GomGomi907/zmd/issues/new/choose)에서 증상을 알려 주세요. 문서 내용이나 개인 정보를 첨부할 필요는 없습니다.
 
@@ -77,11 +77,11 @@ To uninstall the current Windows release, close zmd, run the installed executabl
 
 ## Code signing policy
 
-Windows releases are currently unsigned. The project is preparing free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/). Signing is subject to acceptance and has not yet been enabled.
+Windows releases are currently unsigned. SignPath Foundation acceptance has not been confirmed and signing has not been enabled. If the project is accepted, its signed releases will use: “Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).”
 
-The project maintainer, [GomGomi907](https://github.com/GomGomi907), is responsible for changes, review of external contributions, and approval of signing requests.
+The project maintainer, [GomGomi907](https://github.com/GomGomi907), is the author/committer, reviewer of external contributions, and approver of signing requests. Every Foundation signing request requires manual approval. Anyone granted repository or SignPath access must use multi-factor authentication.
 
-zmd opens local documents without uploading their contents. On Windows, after displaying a document, it contacts GitHub to check for newer releases. If you approve an update when closing the viewer, zmd downloads the release and its checksum. These requests disclose your IP address and ordinary network request information to GitHub and its delivery providers; see the [GitHub privacy statement](https://docs.github.com/en/site-policy/privacy-policies/github-privacy-statement).
+The complete [code signing policy](docs/SIGNING.md), [privacy notice](docs/PRIVACY.md), and [release procedure](docs/RELEASING.md) describe the signing scope, review roles, network requests, system changes, and verification steps. Every release page must link to this Code signing policy.
 
 ## Platform UI
 

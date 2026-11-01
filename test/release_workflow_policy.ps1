@@ -132,6 +132,10 @@ function Invoke-PublishScenario {
         return (@{ isDraft = $state.IsDraft } | ConvertTo-Json -Compress)
       }
       'release create' {
+        $notesIndex = [Array]::IndexOf($GhArgs, '--notes')
+        if ($notesIndex -lt 0 -or $GhArgs[$notesIndex + 1] -notmatch 'Code signing policy: https://github\.com/GomGomi907/zmd/blob/main/docs/SIGNING\.md') {
+          throw 'New release is missing its code signing policy link'
+        }
         $state.Exists = $true
         $state.IsDraft = $true
         $state.Events.Add('create-draft')
