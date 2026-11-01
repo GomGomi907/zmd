@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const version = "0.3.0";
+pub const version = "0.3.1";
 
 pub const RtfImageFormat = enum {
     png,
@@ -1690,7 +1690,7 @@ fn renderRtfTemplate(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
                     pending_hard_break = current.hard_break;
                     continue;
                 }
-                try out.appendSlice(allocator, "\\pard\\sa110\\sl300\\slmult1\\f0\\fs22\\cf1 ");
+                try out.appendSlice(allocator, "\\pard\\sa80\\sl264\\slmult1\\f0\\fs22\\cf1 ");
                 try appendInlineRtf(&out, allocator, pending, refs);
                 try out.appendSlice(allocator, "\\par\n");
                 if (pending_owned) |owned| {
@@ -1946,9 +1946,7 @@ fn renderRtfTemplate(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
         }
 
         if (trimmed.len == 0) {
-            const keep_list_context = list_context;
-            try out.appendSlice(allocator, "\\pard\\f0\\fs22\\cf1\\sa80\\par\n");
-            list_context = keep_list_context;
+            // Blank Markdown lines separate blocks; paragraph spacing already makes that visible.
             lazy_blockquote_level = 0;
             lazy_list_level = 0;
             continue;
@@ -2029,7 +2027,7 @@ fn renderRtfTemplate(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
                 lazy_list_level = indent;
                 continue;
             }
-            try out.appendSlice(allocator, "\\pard\\sa110\\sl300\\slmult1\\f0\\fs22\\cf1 ");
+            try out.appendSlice(allocator, "\\pard\\sa80\\sl264\\slmult1\\f0\\fs22\\cf1 ");
             try appendRtfEscaped(&out, allocator, trimmed);
             try out.appendSlice(allocator, "\\par\n");
             if (htmlBlockStart(trimmed)) |block| {
@@ -2582,7 +2580,7 @@ fn renderRtfTemplate(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
     }
 
     if (pending_plain) |pending| {
-        try out.appendSlice(allocator, "\\pard\\sa110\\sl300\\slmult1\\f0\\fs22\\cf1 ");
+        try out.appendSlice(allocator, "\\pard\\sa80\\sl264\\slmult1\\f0\\fs22\\cf1 ");
         try appendInlineRtf(&out, allocator, pending, refs);
         try out.appendSlice(allocator, "\\par\n");
     }
@@ -3940,14 +3938,14 @@ fn appendPlainBlockquotePrefix(out: *std.ArrayList(u8), allocator: std.mem.Alloc
 
 fn appendRtfContinuationPrefix(out: *std.ArrayList(u8), allocator: std.mem.Allocator, level: usize) !void {
     const left = 360 + level * 360;
-    const prefix = try std.fmt.allocPrint(allocator, "\\pard\\li{}\\sa60\\sl300\\slmult1\\f0\\fs22\\cf1 ", .{left});
+    const prefix = try std.fmt.allocPrint(allocator, "\\pard\\li{}\\sa60\\sl264\\slmult1\\f0\\fs22\\cf1 ", .{left});
     defer allocator.free(prefix);
     try out.appendSlice(allocator, prefix);
 }
 
 fn appendRtfBlockquotePrefix(out: *std.ArrayList(u8), allocator: std.mem.Allocator, quote_level: usize, content_level: usize) !void {
     const left = quote_level * 360 + content_level * 360;
-    const prefix = try std.fmt.allocPrint(allocator, "\\pard\\li{}\\ri240\\sb60\\sa100\\sl300\\slmult1\\cf2 ", .{left});
+    const prefix = try std.fmt.allocPrint(allocator, "\\pard\\li{}\\ri240\\sb60\\sa80\\sl264\\slmult1\\cf2 ", .{left});
     defer allocator.free(prefix);
     try out.appendSlice(allocator, prefix);
 }
@@ -3957,7 +3955,7 @@ fn appendRtfListPrefix(out: *std.ArrayList(u8), allocator: std.mem.Allocator, le
     const first: usize = if (ordered) 300 else 240;
     const left = base_left + level * 360;
     const tab_stop = rtfListTabStop(left, first, ordered, marker);
-    const prefix = try std.fmt.allocPrint(allocator, "\\pard\\li{}\\fi-{}\\tx{}\\sa70\\sl300\\slmult1\\f0\\fs22\\cf1 ", .{ left, first, tab_stop });
+    const prefix = try std.fmt.allocPrint(allocator, "\\pard\\li{}\\fi-{}\\tx{}\\sa40\\sl264\\slmult1\\f0\\fs22\\cf1 ", .{ left, first, tab_stop });
     defer allocator.free(prefix);
     try out.appendSlice(allocator, prefix);
 }
@@ -8942,9 +8940,9 @@ test "renders zero-start ordered sibling lists without lazy nesting" {
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
 
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li520\\fi-300\\tx640\\sa70\\sl300\\slmult1\\f0\\fs22\\cf1 0.\\tab zero-start") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li520\\fi-300\\tx640\\sa70\\sl300\\slmult1\\f0\\fs22\\cf1 2.\\tab two-start") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li880\\fi-300\\tx1000\\sa70\\sl300\\slmult1\\f0\\fs22\\cf1 2.\\tab two-start") == null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li520\\fi-300\\tx640\\sa40\\sl264\\slmult1\\f0\\fs22\\cf1 0.\\tab zero-start") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li520\\fi-300\\tx640\\sa40\\sl264\\slmult1\\f0\\fs22\\cf1 2.\\tab two-start") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li880\\fi-300\\tx1000\\sa40\\sl264\\slmult1\\f0\\fs22\\cf1 2.\\tab two-start") == null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "Paragraph before 0. zero cannot interrupt paragraph") != null);
 }
 
@@ -8967,7 +8965,7 @@ test "keeps non-one ordered markers inside quoted paragraphs" {
     defer std.testing.allocator.free(rtf);
 
     try std.testing.expect(std.mem.indexOf(u8, rtf, "Quote before 0. zero cannot interrupt quoted paragraph") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "Quote before\\i0\\cf1\\par\n\\pard\\li360\\ri240\\sb60\\sa100\\sl300\\slmult1\\cf2 0.") == null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "Quote before\\i0\\cf1\\par\n\\pard\\li360\\ri240\\sb60\\sa80\\sl264\\slmult1\\cf2 0.") == null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "1.\\tab one can interrupt quoted paragraph as ordered list") != null);
 }
 
@@ -9102,7 +9100,7 @@ test "does not over-indent blockquote paragraphs after tab padding" {
     defer std.testing.allocator.free(rtf);
 
     try std.testing.expect(std.mem.indexOf(u8, rtf, "blockquote tab content after marker should render as text") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li1080\\ri240\\sb60\\sa100\\sl300\\slmult1\\cf2 blockquote tab content") == null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li1080\\ri240\\sb60\\sa80\\sl264\\slmult1\\cf2 blockquote tab content") == null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\bullet\\tab list tab content after bullet marker") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "1.\\tab ordered tab content after marker") != null);
 }
@@ -11508,10 +11506,10 @@ test "renders independent three-space list markers at top level" {
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
 
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li480\\fi-240\\tx600\\sa70\\sl300\\slmult1\\f0\\fs22\\cf1 \\bullet\\tab top-level bullet despite leading spaces") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li520\\fi-300\\tx640\\sa70\\sl300\\slmult1\\f0\\fs22\\cf1 1.\\tab top-level ordered despite leading spaces") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li480\\fi-240\\tx600\\sa40\\sl264\\slmult1\\f0\\fs22\\cf1 \\bullet\\tab top-level bullet despite leading spaces") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li520\\fi-300\\tx640\\sa40\\sl264\\slmult1\\f0\\fs22\\cf1 1.\\tab top-level ordered despite leading spaces") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\cf2 - four-space bullet is code") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li840\\fi-240\\tx960\\sa70\\sl300\\slmult1\\f0\\fs22\\cf1 \\bullet\\tab child") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li840\\fi-240\\tx960\\sa40\\sl264\\slmult1\\f0\\fs22\\cf1 \\bullet\\tab child") != null);
 }
 
 test "renders tab-indented list marker boundaries by CommonMark tab stops" {
@@ -11539,7 +11537,7 @@ test "renders tab-indented list marker boundaries by CommonMark tab stops" {
 
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\cf2 - tab bullet literal code") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\cf2 - space-tab bullet literal code") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li840\\fi-240\\tx960\\sa70\\sl300\\slmult1\\f0\\fs22\\cf1 \\bullet\\tab tab child item") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li840\\fi-240\\tx960\\sa40\\sl264\\slmult1\\f0\\fs22\\cf1 \\bullet\\tab tab child item") != null);
 }
 
 test "renders blockquote lazy paragraph continuations" {
@@ -11582,8 +11580,8 @@ test "renders blockquote lazy paragraph continuations" {
     defer std.testing.allocator.free(rtf);
 
     try std.testing.expect(std.mem.indexOf(u8, rtf, "quoted paragraph first lazy continuation should stay in quote quoted paragraph after lazy") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li360\\ri240\\sb60\\sa100\\sl300\\slmult1\\cf2 - indented lazy line should stay paragraph text in quote") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li360\\ri240\\sb60\\sa100\\sl300\\slmult1\\cf2 \\bullet\\tab this unquoted list") == null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li360\\ri240\\sb60\\sa80\\sl264\\slmult1\\cf2 - indented lazy line should stay paragraph text in quote") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li360\\ri240\\sb60\\sa80\\sl264\\slmult1\\cf2 \\bullet\\tab this unquoted list") == null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "------------------------------") != null);
 }
 
@@ -11612,7 +11610,7 @@ test "separates Korean circle outline items without changing normal soft breaks 
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
     try std.testing.expect(std.mem.count(u8, rtf, "\\u9675?") == 5);
-    try std.testing.expect(std.mem.count(u8, rtf, "\\par\n\\pard\\sa110\\sl300\\slmult1\\f0\\fs22\\cf1 \\u9675?") == 3);
+    try std.testing.expect(std.mem.count(u8, rtf, "\\par\n\\pard\\sa80\\sl264\\slmult1\\f0\\fs22\\cf1 \\u9675?") == 3);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "ordinary first line ordinary continuation") != null);
 }
 
@@ -11684,9 +11682,9 @@ test "renders nested blockquotes without leaking raw markers" {
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
 
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li720\\ri240\\sb60\\sa100\\sl300\\slmult1\\cf2 inner compact quote") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li720\\ri240\\sb60\\sa80\\sl264\\slmult1\\cf2 inner compact quote") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "inner spaced quote") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li720\\ri240\\sb60\\sa100\\sl300\\slmult1\\cf2 \\bullet\\tab nested quoted bullet") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li720\\ri240\\sb60\\sa80\\sl264\\slmult1\\cf2 \\bullet\\tab nested quoted bullet") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\bullet\\tab nested quoted bullet nested quoted continuation") != null);
 }
 
@@ -11717,7 +11715,7 @@ test "renders top-level indented code blocks as code without stealing list conti
 
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li360\\ri240\\sa0\\f1\\fs22\\cf2 const value = 42;") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\bullet\\tab parent list item continuation remains list text") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li840\\fi-240\\tx960\\sa70\\sl300\\slmult1\\f0\\fs22\\cf1 \\bullet\\tab nested item remains list item") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li840\\fi-240\\tx960\\sa40\\sl264\\slmult1\\f0\\fs22\\cf1 \\bullet\\tab nested item remains list item") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\bullet\\tab nested item remains list item nested continuation remains list text") != null);
 }
 
@@ -11841,9 +11839,9 @@ test "keeps a readable hierarchy across paragraphs lists quotes and code" {
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs36 Main") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs32 Section") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs28 Detail") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\sa110\\sl300\\slmult1\\f0\\fs22\\cf1 Paragraph") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\sa70\\sl300\\slmult1\\f0\\fs22\\cf1 \\bullet\\tab Item") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\sa100\\sl300\\slmult1\\cf2 Quote") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\sa80\\sl264\\slmult1\\f0\\fs22\\cf1 Paragraph") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\sa40\\sl264\\slmult1\\f0\\fs22\\cf1 \\bullet\\tab Item") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\sa80\\sl264\\slmult1\\cf2 Quote") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\cf2 code") != null);
 }
 
@@ -11944,4 +11942,13 @@ test "renders ultraqa fixture rich text signals" {
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b Feature\\b0 \\cell") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "| Feature | Expected visual signal |") == null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "[image: Alt text for image] ./missing-image.png") != null);
+}
+
+test "blank lines separate paragraphs without adding empty visual paragraphs" {
+    const single = try renderRtf(std.testing.allocator, "first\n\nsecond\n");
+    defer std.testing.allocator.free(single);
+    const multiple = try renderRtf(std.testing.allocator, "first\n\n\nsecond\n");
+    defer std.testing.allocator.free(multiple);
+    try std.testing.expectEqualStrings(single, multiple);
+    try std.testing.expect(std.mem.indexOf(u8, single, "first\\par\n\\pard") != null);
 }
