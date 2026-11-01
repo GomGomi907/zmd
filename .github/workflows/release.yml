@@ -18,7 +18,12 @@ jobs:
         with:
           version: 0.16.0
       - run: zig build test
-      - run: zig build -Doptimize=ReleaseSmall
+      - run: zig build -Dtarget=x86_64-windows -Dcpu=baseline -Doptimize=ReleaseSmall
+      - name: Smoke test release executable
+        shell: pwsh
+        run: |
+          & zig-out/bin/zmd.exe --dump test/fixtures/readability.md | Out-Null
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Package installer
         shell: pwsh
         run: |
