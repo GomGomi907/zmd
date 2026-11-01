@@ -10,6 +10,8 @@ zmd는 가볍고 간편한 읽기 전용 Markdown 뷰어라는 범위를 유지�
 
 외부 기여자의 변경은 [GomGomi907](https://github.com/GomGomi907)가 사람이 직접 검토한 뒤 병합합니다. 작성자 본인의 테스트만으로 리뷰를 대체하지 않습니다.
 
+`main` 브랜치에는 pull request 승인 1건과 Windows·Linux CI 통과가 요구됩니다. 소유자인 관리자는 긴급 수정과 직접 유지보수를 위해 이 규칙을 우회할 수 있으며, 외부 기여 검토와 서명 요청 승인은 여전히 수행합니다.
+
 빌드, GitHub Actions, 릴리스, 업데이트, 설치 또는 서명 관련 변경은 공개 소스에서 최종 artifact까지의 출처 검증에 영향을 줄 수 있습니다. 이런 변경은 [Code signing policy](docs/SIGNING.md)와 [릴리스 운영](docs/RELEASING.md)을 함께 확인하고, 서명 대상·메타데이터·승인 절차를 약화하지 않아야 합니다.
 
 ## 보안과 개인정보

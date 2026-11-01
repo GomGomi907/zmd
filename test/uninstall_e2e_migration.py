@@ -18,6 +18,7 @@ import version_menu_headless as desktop_api
 
 
 UNINSTALL_PATH = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\zmd"
+ERROR_KEY_DELETED = 1018
 WAIT_OBJECT_0 = 0
 WAIT_TIMEOUT = 258
 
@@ -90,6 +91,22 @@ def query_registration(prefix: str) -> tuple[str, str] | None:
             return version, command
     except FileNotFoundError:
         return None
+    except OSError as error:
+        if error.winerror == ERROR_KEY_DELETED:
+            return None
+        raise
+
+
+def registration_key_exists(prefix: str) -> bool:
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, prefix + "\\" + UNINSTALL_PATH):
+            return True
+    except FileNotFoundError:
+        return False
+    except OSError as error:
+        if error.winerror == ERROR_KEY_DELETED:
+            return False
+        raise
 
 
 def test_environment(local_app_data: pathlib.Path, registry_prefix: str) -> dict[str, str]:
@@ -158,13 +175,30 @@ def close_document(process: NativeProcess, viewer: dict[str, object]) -> None:
         raise
 
 
-def wait_for_absent(path: pathlib.Path, timeout: float) -> bool:
+def wait_for_uninstall_complete(
+    installed: pathlib.Path, registry_prefix: str, timeout: float
+) -> tuple[bool, list[str], bool, tuple[str, str] | None]:
     deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if not path.exists():
-            return True
+    while True:
+        registration = query_registration(registry_prefix)
+        registration_exists = registration_key_exists(registry_prefix)
+        file_exists = installed.exists()
+        backups = [str(path) for path in installed.parent.glob(installed.name + ".uninstalling-*")]
+        if not file_exists and not backups and not registration_exists:
+            return file_exists, backups, registration_exists, registration
+        if time.monotonic() >= deadline:
+            return file_exists, backups, registration_exists, registration
         time.sleep(0.05)
-    return not path.exists()
+
+
+def close_error_dialogs(desktop: int) -> list[tuple[str, list[str]]]:
+    details: list[tuple[str, list[str]]] = []
+    for item in desktop_api.desktop_windows(desktop):
+        if item["class"] != "#32770":
+            continue
+        details.append((str(item["title"]), desktop_api.child_texts(int(item["hwnd"]))))
+        desktop_api.user32.PostMessageW(int(item["hwnd"]), desktop_api.WM_CLOSE, 0, 0)
+    return details
 
 
 def remove_tree_when_unlocked(path: pathlib.Path, timeout: float = 5.0) -> None:
@@ -243,10 +277,17 @@ def main() -> None:
                 raise RuntimeError(f"uninstall launcher failed with exit code {uninstall_exit}")
             for viewer_process in (process, second_process):
                 viewer_process.wait(timeout=20)
-            if not wait_for_absent(installed, 10):
-                raise RuntimeError("installed executable remained after successful uninstall")
-            if query_registration(actual_prefix) is not None:
-                raise RuntimeError("uninstall registration remained after successful uninstall")
+            file_exists, backups, registration_exists, registration = wait_for_uninstall_complete(
+                installed, actual_prefix, 15
+            )
+            if file_exists or backups or registration_exists:
+                dialogs = close_error_dialogs(desktop)
+                raise RuntimeError(
+                    "uninstall did not complete: "
+                    f"file_exists={file_exists}, backups={backups!r}, "
+                    f"registration_exists={registration_exists}, registration={registration!r}, "
+                    f"dialogs={dialogs!r}"
+                )
             if document.read_text(encoding="utf-8") != "# Migration registration check\n":
                 raise RuntimeError("first user document changed during uninstall")
             if second_document.read_text(encoding="utf-8") != "# Preserve this second document\n":
@@ -280,22 +321,17 @@ def main() -> None:
             setup_uninstall_exit = setup_uninstall.wait(timeout=10)
             if setup_uninstall_exit != 0:
                 raise RuntimeError(f"setup uninstall launcher failed with exit code {setup_uninstall_exit}")
-            if not wait_for_absent(installed, 10):
-                dialog_details: list[tuple[str, list[str]]] = []
-                for item in desktop_api.desktop_windows(desktop):
-                    if item["class"] == "#32770":
-                        dialog_details.append(
-                            (str(item["title"]), desktop_api.child_texts(int(item["hwnd"])))
-                        )
-                        desktop_api.user32.PostMessageW(
-                            int(item["hwnd"]), desktop_api.WM_CLOSE, 0, 0
-                        )
-                time.sleep(1.0)
+            file_exists, backups, registration_exists, registration = wait_for_uninstall_complete(
+                installed, actual_prefix, 15
+            )
+            if file_exists or backups or registration_exists:
+                dialog_details = close_error_dialogs(desktop)
                 raise RuntimeError(
-                    f"setup-installed executable remained after uninstall; dialogs={dialog_details!r}"
+                    "setup uninstall did not complete: "
+                    f"file_exists={file_exists}, backups={backups!r}, "
+                    f"registration_exists={registration_exists}, registration={registration!r}, "
+                    f"dialogs={dialog_details!r}"
                 )
-            if query_registration(actual_prefix) is not None:
-                raise RuntimeError("setup registration remained after uninstall")
             print(
                 "Legacy byte-only update was adopted after display; two installed windows closed during "
                 "uninstall; documents were preserved; portable execution stayed unregistered; normal setup "
