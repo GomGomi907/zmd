@@ -228,4 +228,5 @@ Assert-True $partial.State.Exists 'partial upload did not retain the draft relea
 Assert-True $partial.State.IsDraft 'partially uploaded release was made public'
 Assert-True (-not ($partial.State.Events -contains 'publish')) 'partial upload reached publication'
 
+$global:LASTEXITCODE = 0
 Write-Output 'release workflow policy tests passed'
