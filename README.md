@@ -53,6 +53,16 @@ zmd --uninstall-file-association
 
 For Windows release distribution, ship `zmd-setup.exe`. The installer is the same self-contained app binary under a setup filename: it copies itself to `%LOCALAPPDATA%\Programs\zmd\zmd.exe` and registers zmd as a Markdown "Open with" app for the current user. The portable `zmd.exe` remains useful for direct CLI/viewer use.
 
+To uninstall on Windows, close zmd, run the installed executable with `--uninstall-file-association` to remove its registration, and delete `%LOCALAPPDATA%\Programs\zmd\zmd.exe`. This does not delete your Markdown files.
+
+## Code signing policy
+
+Windows releases are currently unsigned. The project is preparing to apply for free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/). Signing is subject to acceptance and has not yet been enabled.
+
+The project maintainer, [GomGomi907](https://github.com/GomGomi907), is responsible for changes, review of external contributions, and approval of signing requests.
+
+zmd opens local documents without uploading their contents. On Windows, after displaying a document, it contacts GitHub to check for newer releases. If you approve an update when closing the viewer, zmd downloads the release and its checksum. These requests disclose your IP address and ordinary network request information to GitHub and its delivery providers; see the [GitHub privacy statement](https://docs.github.com/en/site-policy/privacy-policies/github-privacy-statement).
+
 ## Platform UI
 
 - Windows: direct Win32 window with a read-only `RICHEDIT50W` control. Markdown source is converted to RTF before display, so common formatting is visible immediately in viewer mode.

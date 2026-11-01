@@ -1,4 +1,32 @@
 #include "resource.h"
+#include "zmd_version.h"
 
 IDI_ZMD_DOCUMENT ICON "zmd-doc.ico"
 1 24 "zmd.manifest"
+
+1 VERSIONINFO
+FILEVERSION ZMD_FILE_VERSION
+PRODUCTVERSION ZMD_PRODUCT_VERSION
+FILEFLAGSMASK 0x3fL
+FILEFLAGS 0x0L
+FILEOS 0x40004L
+FILETYPE 0x1L
+FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "FileDescription", "zmd Markdown viewer\0"
+            VALUE "FileVersion", ZMD_FILE_VERSION_STRING "\0"
+            VALUE "InternalName", "zmd\0"
+            VALUE "LegalCopyright", "Copyright (c) 2026 Gom_Gom_i\0"
+            VALUE "ProductName", "zmd\0"
+            VALUE "ProductVersion", ZMD_PRODUCT_VERSION_STRING "\0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 1200
+    END
+END

@@ -1,19 +1,44 @@
 const std = @import("std");
 
+const app_version = "0.3.3";
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const windows_console = b.option(bool, "windows-console", "Build Windows as a console app for CLI smoke tests") orelse false;
     const windows_gui = target.result.os.tag == .windows and !windows_console;
 
-    const options = b.addOptions();
-    options.addOption(bool, "windows_gui", windows_gui);
+    const executable_options = b.addOptions();
+    executable_options.addOption(bool, "windows_gui", windows_gui);
+
+    const library_options = b.addOptions();
+    library_options.addOption([]const u8, "version", app_version);
+
+    const semantic_version = std.SemanticVersion.parse(app_version) catch @panic("invalid app version");
+    const generated_resources = b.addWriteFiles();
+    _ = generated_resources.add("zmd_version.h", b.fmt(
+        \\#define ZMD_FILE_VERSION {d},{d},{d},0
+        \\#define ZMD_FILE_VERSION_STRING "{s}.0"
+        \\#define ZMD_PRODUCT_VERSION {d},{d},{d},0
+        \\#define ZMD_PRODUCT_VERSION_STRING "{s}"
+        \\
+    , .{
+        semantic_version.major,
+        semantic_version.minor,
+        semantic_version.patch,
+        app_version,
+        semantic_version.major,
+        semantic_version.minor,
+        semantic_version.patch,
+        app_version,
+    }));
 
     const zmd_mod = b.addModule("zmd", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
     });
+    zmd_mod.addOptions("build_options", library_options);
 
     const exe = b.addExecutable(.{
         .name = "zmd",
@@ -26,7 +51,7 @@ pub fn build(b: *std.Build) void {
             },
         }),
     });
-    exe.root_module.addOptions("build_options", options);
+    exe.root_module.addOptions("build_options", executable_options);
     if (windows_gui) {
         exe.subsystem = .windows;
     }
@@ -39,7 +64,7 @@ pub fn build(b: *std.Build) void {
         exe.root_module.linkSystemLibrary("winhttp", .{});
         exe.root_module.addWin32ResourceFile(.{
             .file = b.path("assets/windows/zmd.rc"),
-            .include_paths = &.{b.path("assets/windows")},
+            .include_paths = &.{ b.path("assets/windows"), generated_resources.getDirectory() },
         });
     }
 
@@ -59,7 +84,7 @@ pub fn build(b: *std.Build) void {
                 },
             }),
         });
-        setup.root_module.addOptions("build_options", options);
+        setup.root_module.addOptions("build_options", executable_options);
         setup.subsystem = .windows;
         setup.root_module.linkSystemLibrary("user32", .{});
         setup.root_module.linkSystemLibrary("gdi32", .{});
@@ -69,7 +94,7 @@ pub fn build(b: *std.Build) void {
         setup.root_module.linkSystemLibrary("winhttp", .{});
         setup.root_module.addWin32ResourceFile(.{
             .file = b.path("assets/windows/zmd.rc"),
-            .include_paths = &.{b.path("assets/windows")},
+            .include_paths = &.{ b.path("assets/windows"), generated_resources.getDirectory() },
         });
         const install_setup = b.addInstallArtifact(setup, .{});
         b.getInstallStep().dependOn(&install_setup.step);

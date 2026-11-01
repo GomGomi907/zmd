@@ -1,6 +1,7 @@
 const std = @import("std");
+const build_options = @import("build_options");
 
-pub const version = "0.3.3";
+pub const version = build_options.version;
 
 pub const RtfImageFormat = enum {
     png,
