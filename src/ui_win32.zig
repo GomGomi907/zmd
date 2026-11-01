@@ -26,6 +26,7 @@ const HDC = ?*anyopaque;
 const HKEY = ?*anyopaque;
 
 const LPCWSTR = [*:0]const u16;
+const RESOURCE_ID = [*:0]align(1) const u16;
 const WNDPROC = ?*const fn (HWND, UINT, WPARAM, LPARAM) callconv(.winapi) LRESULT;
 const TIMERPROC = ?*const fn (HWND, UINT, UINT_PTR, DWORD) callconv(.winapi) void;
 
@@ -76,8 +77,8 @@ const CHARRANGE = extern struct {
 
 extern "kernel32" fn GetModuleHandleW(lpModuleName: ?LPCWSTR) callconv(.winapi) HINSTANCE;
 extern "kernel32" fn LoadLibraryW(lpLibFileName: LPCWSTR) callconv(.winapi) HINSTANCE;
-extern "user32" fn LoadIconW(hInstance: HINSTANCE, lpIconName: LPCWSTR) callconv(.winapi) HICON;
-extern "user32" fn LoadCursorW(hInstance: HINSTANCE, lpCursorName: LPCWSTR) callconv(.winapi) HCURSOR;
+extern "user32" fn LoadIconW(hInstance: HINSTANCE, lpIconName: RESOURCE_ID) callconv(.winapi) HICON;
+extern "user32" fn LoadCursorW(hInstance: HINSTANCE, lpCursorName: RESOURCE_ID) callconv(.winapi) HCURSOR;
 extern "user32" fn RegisterClassW(lpWndClass: *const WNDCLASSW) callconv(.winapi) ATOM;
 extern "user32" fn CreateWindowExW(
     dwExStyle: DWORD,
@@ -278,6 +279,7 @@ var available_update: ?*updater.AvailableUpdate = null;
 var update_io: ?Io = null;
 var update_temp_dir: ?[]const u8 = null;
 var update_local_app_data: ?[]const u8 = null;
+var uninstall_close_message: UINT = 0;
 
 const ThemePreference = enum { dark, light };
 const VisualTheme = enum { dark, light, high_contrast };
@@ -346,6 +348,8 @@ fn showWindow(allocator: std.mem.Allocator, title: []const u8) !void {
     defer allocator.free(title_w);
 
     const class_name = std.unicode.utf8ToUtf16LeStringLiteral("zmd_window");
+    uninstall_close_message = @import("uninstall_windows_win32.zig").closeMessage();
+    defer uninstall_close_message = 0;
     instance = GetModuleHandleW(null);
     theme_preference = loadThemePreference();
     visual_theme = resolveVisualTheme(theme_preference, highContrastEnabled());
@@ -392,6 +396,7 @@ fn showWindow(allocator: std.mem.Allocator, title: []const u8) !void {
     _ = ShowWindow(hwnd, SW_SHOWDEFAULT);
     if (edit_hwnd) |edit| _ = SetFocus(edit);
     _ = UpdateWindow(hwnd);
+    @import("setup.zig").startInstalledMaintenance(update_local_app_data);
     startUpdateCheck(update_temp_dir);
 
     var msg: MSG = undefined;
@@ -499,6 +504,10 @@ fn handleClose(hwnd: HWND) void {
 }
 
 fn windowProc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) callconv(.winapi) LRESULT {
+    if (uninstall_close_message != 0 and msg == uninstall_close_message) {
+        _ = DestroyWindow(hwnd);
+        return 0;
+    }
     switch (msg) {
         WM_CREATE => {
             current_dpi = nonzeroDpi(GetDpiForWindow(hwnd));
@@ -614,7 +623,7 @@ fn ptrToLParam(ptr: anytype) LPARAM {
     return @bitCast(@intFromPtr(ptr));
 }
 
-fn makeIntResourceW(id: u16) LPCWSTR {
+fn makeIntResourceW(id: u16) RESOURCE_ID {
     return @ptrFromInt(id);
 }
 

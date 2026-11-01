@@ -24,6 +24,19 @@ pub fn installExecutablePath(allocator: std.mem.Allocator, exe_path: []const u8)
     };
 }
 
+pub fn installRegisteredExecutable(
+    allocator: std.mem.Allocator,
+    exe_path: []const u8,
+    install_dir: []const u8,
+    version: []const u8,
+    estimated_size_kb: u32,
+) Error!void {
+    return switch (builtin.os.tag) {
+        .windows => @import("file_assoc_win32.zig").installRegisteredExecutable(allocator, exe_path, install_dir, version, estimated_size_kb),
+        else => Error.UnsupportedPlatform,
+    };
+}
+
 pub fn uninstall(allocator: std.mem.Allocator) Error!void {
     return switch (builtin.os.tag) {
         .windows => @import("file_assoc_win32.zig").uninstall(allocator),

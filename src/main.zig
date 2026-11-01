@@ -39,7 +39,7 @@ pub fn main(init: std.process.Init) !void {
             _ = @import("updater_win32.zig").applyFromArguments(arena, io, args) catch return;
             return;
         }
-        if (args.len > 0 and setup.isSetupExecutable(args[0])) {
+        if (args.len > 0 and (setup.isSetupExecutable(args[0]) or (args.len > 1 and setup.isSetupArgument(args[1])))) {
             try setup.run(arena, io, init.environ_map, args);
             return;
         }

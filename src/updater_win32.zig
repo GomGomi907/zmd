@@ -298,7 +298,7 @@ pub fn currentExePath(allocator: std.mem.Allocator) ![]u8 {
     return error.ExecutablePathTooLong;
 }
 
-fn waitForProcess(process_id: DWORD) !void {
+pub fn waitForProcess(process_id: DWORD) !void {
     const process = OpenProcess(synchronize, 0, process_id) orelse {
         if (GetLastError() == error_invalid_parameter) return;
         return error.ParentProcessUnavailable;

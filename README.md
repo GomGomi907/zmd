@@ -71,7 +71,7 @@ zmd --uninstall-file-association
 
 For Windows release distribution, ship `zmd-setup.exe`. The installer is the same self-contained app binary under a setup filename: it copies itself to `%LOCALAPPDATA%\Programs\zmd\zmd.exe` and registers zmd as a Markdown "Open with" app for the current user. The portable `zmd.exe` remains useful for direct CLI/viewer use.
 
-The next release will show the version under **About zmd...** in the window's system menu. This menu is not yet in the published v0.3.3 release.
+The next release will show the version under **About zmd...** in the window's system menu and will register zmd under Windows **Settings → Apps → Installed apps**, where it can be removed. For existing installations upgraded automatically, the entry is added in the background after the updated app next opens a document. These changes are not yet in the published v0.3.3 release.
 
 To uninstall the current Windows release, close zmd, run the installed executable with `--uninstall-file-association` to remove its registration, and delete `%LOCALAPPDATA%\Programs\zmd\zmd.exe`. This does not delete your Markdown files. zmd does not yet appear in Windows **Settings → Apps → Installed apps**.
 
