@@ -58,10 +58,7 @@ fn install(allocator: std.mem.Allocator, io: Io, environ_map: *std.process.Envir
     defer allocator.free(source_exe);
 
     try Io.Dir.cwd().createDirPath(io, install_dir);
-    try Io.Dir.copyFileAbsolute(source_exe, installed_exe, io, .{
-        .replace = true,
-        .make_path = true,
-    });
+    try copyInstallation(allocator, io, source_exe, installed_exe);
     try file_assoc.installExecutablePath(allocator, installed_exe);
 
     if (!quiet) {
@@ -72,6 +69,13 @@ fn install(allocator: std.mem.Allocator, io: Io, environ_map: *std.process.Envir
         );
         alert(allocator, "zmd setup", message, .info);
     }
+}
+
+pub fn copyInstallation(allocator: std.mem.Allocator, io: Io, source: []const u8, target: []const u8) !void {
+    Io.Dir.copyFileAbsolute(source, target, io, .{ .replace = true, .make_path = true }) catch |err| switch (err) {
+        error.AccessDenied => try @import("updater_win32.zig").replacePreservingOld(allocator, io, source, target),
+        else => return err,
+    };
 }
 
 fn uninstall(allocator: std.mem.Allocator) !void {

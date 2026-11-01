@@ -311,7 +311,7 @@ fn waitForProcess(process_id: DWORD) !void {
     }
 }
 
-fn replacePreservingOld(allocator: std.mem.Allocator, io: Io, source: []const u8, target: []const u8) !void {
+pub fn replacePreservingOld(allocator: std.mem.Allocator, io: Io, source: []const u8, target: []const u8) !void {
     const data = try Io.Dir.cwd().readFileAlloc(io, source, allocator, .limited(16 * 1024 * 1024));
     defer allocator.free(data);
     try replaceBytesPreservingOld(allocator, io, data, target);

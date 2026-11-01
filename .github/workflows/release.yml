@@ -24,6 +24,8 @@ jobs:
         run: |
           & zig-out/bin/zmd.exe --dump test/fixtures/readability.md | Out-Null
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test installation while an executable is running
+        run: pwsh -File test/install_running.ps1
       - name: Package installer
         shell: pwsh
         run: |
