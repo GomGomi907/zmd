@@ -18,7 +18,7 @@ pub fn build(b: *std.Build) void {
     const generated_resources = b.addWriteFiles();
     _ = generated_resources.add("zmd_version.h", b.fmt(
         \\#define ZMD_FILE_VERSION {d},{d},{d},0
-        \\#define ZMD_FILE_VERSION_STRING "{s}.0"
+        \\#define ZMD_FILE_VERSION_STRING "{s}"
         \\#define ZMD_PRODUCT_VERSION {d},{d},{d},0
         \\#define ZMD_PRODUCT_VERSION_STRING "{s}"
         \\
