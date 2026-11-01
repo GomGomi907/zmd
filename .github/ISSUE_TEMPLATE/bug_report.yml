@@ -1,0 +1,24 @@
+name: 문제 신고 / Bug report
+description: zmd 사용 중 발생한 문제를 알려 주세요.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 어떤 문제가 있나요? / What happened?
+      description: 개인 정보나 문서 원문은 지우고 알려 주세요.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 어떻게 하면 나타나나요? / Steps to reproduce
+      description: 기억나는 범위에서 적어 주세요.
+    validations:
+      required: false
+  - type: input
+    id: environment
+    attributes:
+      label: 운영체제와 zmd 버전 / OS and zmd version
+      description: 알고 계신 경우에만 적어 주세요.
+    validations:
+      required: false

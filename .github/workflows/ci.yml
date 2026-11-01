@@ -22,6 +22,17 @@ jobs:
       - run: zig version
       - run: zig build test
       - run: zig build -Doptimize=ReleaseSmall
+      - name: Verify version menu on an isolated desktop
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = [regex]::Match((Get-Content build.zig -Raw), '(?m)^const app_version = "([^"]+)";').Groups[1].Value
+          if (-not $version) { throw 'app_version not found' }
+          python test/version_menu_headless.py zig-out/bin/zmd.exe $version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify release safety policy
+        if: runner.os == 'Windows'
+        run: ./test/release_workflow_policy.ps1
       - run: zig build -Dwindows-console=true -Doptimize=ReleaseSmall
       - if: runner.os == 'Windows'
         run: .\zig-out\bin\zmd.exe --dump test\fixtures\sample.md

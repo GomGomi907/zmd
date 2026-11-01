@@ -1,0 +1,10 @@
+name: 제안 / Suggestion
+description: 불편한 점이나 아이디어를 알려 주세요.
+body:
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: 어떤 점이 불편하거나 필요하신가요? / What would you like to improve?
+      description: 편하게 적어 주세요.
+    validations:
+      required: true

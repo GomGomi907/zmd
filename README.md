@@ -4,6 +4,23 @@
 
 The current milestone is intentionally tiny: a single executable that opens a local `.md` file in a readable, non-editing native viewer window.
 
+## 시작하기
+
+zmd는 문서를 편집하지 않고 빠르게 읽기 위한 가벼운 Markdown 뷰어입니다.
+
+1. [최신 릴리스](https://github.com/GomGomi907/zmd/releases/latest)에서 Windows 설치 파일 `zmd-setup-windows-x86_64.exe`를 내려받아 실행합니다.
+2. Markdown 파일을 열 때 **연결 프로그램 → zmd**를 선택합니다. 기본 앱으로 쓰려면 Windows에서 항상 이 앱을 사용하도록 선택하세요.
+
+### 읽기 도구
+
+- **밝은 테마 / 어두운 테마:** `Ctrl` + `Shift` + `T`, 또는 창 왼쪽 위 아이콘의 메뉴. Windows 고대비 모드가 켜져 있으면 고대비 설정이 우선 적용됩니다.
+- **확대 / 축소:** `Ctrl` + `+` / `Ctrl` + `-`, 또는 `Ctrl` + 마우스 휠. `Ctrl` + `0`으로 원래 크기로 돌아갑니다.
+- **업데이트:** 문서를 표시한 뒤 백그라운드에서 새 버전을 확인합니다. 업데이트가 있으면 창을 닫을 때만 설치 여부를 묻고, 승인하면 추가 창 없이 업데이트합니다.
+
+Windows 설치 파일은 현재 디지털 서명되지 않았습니다. 서명 적용을 준비하고 있으며, 최신 상태는 아래 [Code signing policy](#code-signing-policy)에서 확인할 수 있습니다.
+
+문제가 생기면 [이슈 등록](https://github.com/GomGomi907/zmd/issues/new/choose)에서 증상을 알려 주세요. 문서 내용이나 개인 정보를 첨부할 필요는 없습니다.
+
 ## Principles
 
 - Viewer-only: read and display Markdown; do not edit.
@@ -15,6 +32,7 @@ The current milestone is intentionally tiny: a single executable that opens a lo
 ## Build
 
 This project targets Zig `0.16.0`.
+Maintainers can find the release checklist in [docs/RELEASING.md](docs/RELEASING.md).
 
 ```sh
 zig build test
@@ -53,11 +71,13 @@ zmd --uninstall-file-association
 
 For Windows release distribution, ship `zmd-setup.exe`. The installer is the same self-contained app binary under a setup filename: it copies itself to `%LOCALAPPDATA%\Programs\zmd\zmd.exe` and registers zmd as a Markdown "Open with" app for the current user. The portable `zmd.exe` remains useful for direct CLI/viewer use.
 
-To uninstall on Windows, close zmd, run the installed executable with `--uninstall-file-association` to remove its registration, and delete `%LOCALAPPDATA%\Programs\zmd\zmd.exe`. This does not delete your Markdown files.
+The next release will show the version under **About zmd...** in the window's system menu. This menu is not yet in the published v0.3.3 release.
+
+To uninstall the current Windows release, close zmd, run the installed executable with `--uninstall-file-association` to remove its registration, and delete `%LOCALAPPDATA%\Programs\zmd\zmd.exe`. This does not delete your Markdown files. zmd does not yet appear in Windows **Settings → Apps → Installed apps**.
 
 ## Code signing policy
 
-Windows releases are currently unsigned. The project is preparing to apply for free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/). Signing is subject to acceptance and has not yet been enabled.
+Windows releases are currently unsigned. The project is preparing free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/). Signing is subject to acceptance and has not yet been enabled.
 
 The project maintainer, [GomGomi907](https://github.com/GomGomi907), is responsible for changes, review of external contributions, and approval of signing requests.
 

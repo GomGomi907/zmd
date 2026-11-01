@@ -250,6 +250,7 @@ const minimum_zoom_percent: u32 = 50;
 const maximum_zoom_percent: u32 = 300;
 const zoom_step_percent: u32 = 10;
 const theme_system_command: WPARAM = 0x1ff0;
+const about_system_command: WPARAM = 0x1fe0;
 const app_icon_id: u16 = 1;
 const resize_timer_id: UINT_PTR = 1;
 const resize_debounce_ms: UINT = 180;
@@ -546,6 +547,10 @@ fn windowProc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) callconv(.w
                 toggleTheme(hwnd);
                 return 0;
             }
+            if (wparam & 0xfff0 == about_system_command) {
+                showAbout(hwnd);
+                return 0;
+            }
             return DefWindowProcW(hwnd, msg, wparam, lparam);
         },
         WM_SIZE => {
@@ -789,9 +794,21 @@ fn applyWindowFrame(hwnd: HWND, theme: VisualTheme, palette: ThemePalette) void 
 
 fn installSystemMenu(hwnd: HWND) void {
     const menu = GetSystemMenu(hwnd, 0) orelse return;
-    const label = std.unicode.utf8ToUtf16LeStringLiteral("Toggle light/dark theme\tCtrl+Shift+T");
+    const theme_label = std.unicode.utf8ToUtf16LeStringLiteral("Toggle light/dark theme\tCtrl+Shift+T");
+    const about_label = std.unicode.utf8ToUtf16LeStringLiteral("About zmd...");
     _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
-    _ = AppendMenuW(menu, MF_STRING, theme_system_command, label.ptr);
+    _ = AppendMenuW(menu, MF_STRING, theme_system_command, theme_label.ptr);
+    _ = AppendMenuW(menu, MF_STRING, about_system_command, about_label.ptr);
+}
+
+fn showAbout(hwnd: HWND) void {
+    const message = std.unicode.utf8ToUtf16LeStringLiteral(aboutText());
+    const title = std.unicode.utf8ToUtf16LeStringLiteral("About zmd");
+    _ = MessageBoxW(hwnd, message.ptr, title.ptr, MB_OK | MB_ICONINFORMATION);
+}
+
+fn aboutText() *const ["zmd ".len + zmd.version.len:0]u8 {
+    return "zmd " ++ zmd.version;
 }
 
 fn toggleTheme(hwnd: HWND) void {
@@ -1091,6 +1108,10 @@ test "reader theme preference yields to Windows high contrast" {
     try std.testing.expectEqual(high_contrast.rtf.text, high_contrast.rtf.muted);
     try std.testing.expectEqual(high_contrast.rtf.text, high_contrast.rtf.link);
     try std.testing.expectEqual(rgbBytes(high_contrast.document), high_contrast.rtf.surface);
+}
+
+test "about text reports the build version" {
+    try std.testing.expectEqualStrings("zmd " ++ zmd.version, aboutText());
 }
 
 test "close never waits for an unfinished or failed update check" {

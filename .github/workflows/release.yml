@@ -14,6 +14,28 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Validate release version
+        shell: pwsh
+        run: |
+          $buildText = Get-Content build.zig -Raw
+          $manifestText = Get-Content build.zig.zon -Raw
+          $buildMatches = [regex]::Matches($buildText, '(?m)^const app_version = "([^"]+)";\s*$')
+          $manifestMatches = [regex]::Matches($manifestText, '(?m)^\s*\.version\s*=\s*"([^"]+)",\s*$')
+          if ($buildMatches.Count -ne 1) { throw 'Expected exactly one app_version in build.zig' }
+          if ($manifestMatches.Count -ne 1) { throw 'Expected exactly one .version in build.zig.zon' }
+
+          $buildVersion = $buildMatches[0].Groups[1].Value
+          $manifestVersion = $manifestMatches[0].Groups[1].Value
+          if ($env:GITHUB_REF_NAME -notmatch '^v(?<version>[0-9]+\.[0-9]+\.[0-9]+)$') {
+            throw "Release tag must be a stable vX.Y.Z version: $env:GITHUB_REF_NAME"
+          }
+          $tagVersion = $Matches.version
+          if ($buildVersion -ne $manifestVersion -or $buildVersion -ne $tagVersion) {
+            throw "Version mismatch: build.zig=$buildVersion build.zig.zon=$manifestVersion tag=$env:GITHUB_REF_NAME"
+          }
+      - name: Test release safety policy
+        shell: pwsh
+        run: ./test/release_workflow_policy.ps1
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.16.0
@@ -38,9 +60,53 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = $env:GITHUB_REF_NAME
-          gh release view $tag *> $null
-          if ($LASTEXITCODE -eq 0) {
-            gh release upload $tag zmd-setup-windows-x86_64.exe zmd-setup-windows-x86_64.exe.sha256 --clobber
+          $assets = @(
+            'zmd-setup-windows-x86_64.exe',
+            'zmd-setup-windows-x86_64.exe.sha256'
+          )
+          $release = gh release view $tag --json isDraft 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --title $tag --generate-notes --draft --verify-tag
+            if ($LASTEXITCODE -ne 0) { throw "Unable to create draft release $tag" }
+            $isDraft = $true
           } else {
-            gh release create $tag zmd-setup-windows-x86_64.exe zmd-setup-windows-x86_64.exe.sha256 --title $tag --generate-notes
+            $isDraft = ($release | ConvertFrom-Json).isDraft
+          }
+
+          $downloadDir = Join-Path $env:RUNNER_TEMP 'existing-release-assets'
+          New-Item -ItemType Directory -Path $downloadDir -Force | Out-Null
+          $missing = [System.Collections.Generic.List[string]]::new()
+          foreach ($asset in $assets) {
+            $remotePath = Join-Path $downloadDir $asset
+            gh release download $tag --pattern $asset --dir $downloadDir 2>$null
+            if ($LASTEXITCODE -ne 0) {
+              $missing.Add($asset)
+              continue
+            }
+
+            $localHash = (Get-FileHash -LiteralPath $asset -Algorithm SHA256).Hash
+            $remoteHash = (Get-FileHash -LiteralPath $remotePath -Algorithm SHA256).Hash
+            if ($localHash -ne $remoteHash) {
+              throw "Release $tag already contains different bytes for $asset"
+            }
+          }
+
+          if ($missing.Count -gt 0) {
+            gh release upload $tag @missing
+            if ($LASTEXITCODE -ne 0) { throw "Unable to upload release assets for $tag" }
+          }
+
+          foreach ($asset in $assets) {
+            $verifyDir = Join-Path $env:RUNNER_TEMP "verify-$([guid]::NewGuid())"
+            New-Item -ItemType Directory -Path $verifyDir | Out-Null
+            gh release download $tag --pattern $asset --dir $verifyDir
+            if ($LASTEXITCODE -ne 0) { throw "Unable to verify published asset $asset" }
+            $localHash = (Get-FileHash -LiteralPath $asset -Algorithm SHA256).Hash
+            $remoteHash = (Get-FileHash -LiteralPath (Join-Path $verifyDir $asset) -Algorithm SHA256).Hash
+            if ($localHash -ne $remoteHash) { throw "Uploaded asset verification failed for $asset" }
+          }
+
+          if ($isDraft) {
+            gh release edit $tag --draft=false
+            if ($LASTEXITCODE -ne 0) { throw "Unable to publish verified release $tag" }
           }
