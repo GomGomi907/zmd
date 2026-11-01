@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const version = "0.2.1";
+pub const version = "0.2.2";
 
 pub const RtfImageFormat = enum {
     png,
@@ -62,7 +62,7 @@ const max_rtf_embedded_image_bytes = 32 * 1024 * 1024;
 
 const rtf_header =
     "{\\rtf1\\ansi\\ansicpg65001\\deff0" ++
-    "{\\fonttbl{\\f0 Segoe UI;}{\\f1 Consolas;}}" ++
+    "{\\fonttbl{\\f0 Malgun Gothic;}{\\f1 Consolas;}}" ++
     "{\\colortbl;\\red230\\green237\\blue243;\\red139\\green148\\blue158;\\red121\\green192\\blue255;\\red22\\green27\\blue34;\\red48\\green54\\blue61;}" ++
     "\\viewkind4\\uc1\\pard\\f0\\fs22\\cf1\n";
 
@@ -1658,7 +1658,7 @@ fn renderRtfTemplate(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
                     pending_hard_break = current.hard_break;
                     continue;
                 }
-                try out.appendSlice(allocator, "\\pard\\sa110\\f0\\fs22\\cf1 ");
+                try out.appendSlice(allocator, "\\pard\\sa110\\sl300\\slmult1\\f0\\fs22\\cf1 ");
                 try appendInlineRtf(&out, allocator, pending, refs);
                 try out.appendSlice(allocator, "\\par\n");
                 if (pending_owned) |owned| {
@@ -1825,7 +1825,7 @@ fn renderRtfTemplate(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
 
         if (active_fence == null and !list_context) {
             if (indentedCodeText(line)) |code_text| {
-                try out.appendSlice(allocator, "\\pard\\li360\\ri240\\sa0\\f1\\fs20\\cf2 ");
+                try out.appendSlice(allocator, "\\pard\\li360\\ri240\\sa0\\f1\\fs22\\cf2 ");
                 if (code_text.len == 0) {
                     try out.appendSlice(allocator, "\\~");
                 } else {
@@ -1848,7 +1848,7 @@ fn renderRtfTemplate(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
                 lazy_list_level = 0;
                 continue;
             }
-            try out.appendSlice(allocator, "\\pard\\li360\\ri240\\sa0\\f1\\fs20\\cf2 ");
+            try out.appendSlice(allocator, "\\pard\\li360\\ri240\\sa0\\f1\\fs22\\cf2 ");
             const code_line = try stripCodeFenceContentIndent(allocator, line, fence.indent);
             defer allocator.free(code_line);
             if (code_line.len == 0) {
@@ -1884,7 +1884,7 @@ fn renderRtfTemplate(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
                 continue;
             }
             active_fence = fence;
-            try out.appendSlice(allocator, "\\pard\\li360\\ri240\\sb80\\sa0\\f1\\fs20\\cf2 ");
+            try out.appendSlice(allocator, "\\pard\\li360\\ri240\\sb80\\sa0\\f1\\fs22\\cf2 ");
             list_context = false;
             lazy_blockquote_level = 0;
             lazy_list_level = 0;
@@ -1934,7 +1934,7 @@ fn renderRtfTemplate(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
                 lazy_list_level = indent;
                 continue;
             }
-            try out.appendSlice(allocator, "\\pard\\sa160\\f1\\fs20\\cf2 ------------------------------\\par\n");
+            try out.appendSlice(allocator, "\\pard\\sa160\\f1\\fs22\\cf2 ------------------------------\\par\n");
             list_context = false;
             lazy_blockquote_level = 0;
             lazy_list_level = 0;
@@ -1955,13 +1955,13 @@ fn renderRtfTemplate(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
             }
             const title = atxHeadingTitle(trimmed, level);
             const size = switch (level) {
-                1 => "44",
-                2 => "36",
-                3 => "30",
-                4 => "26",
-                else => "24",
+                1 => "36",
+                2 => "32",
+                3 => "28",
+                4 => "24",
+                else => "22",
             };
-            try out.appendSlice(allocator, "\\pard\\sb220\\sa120\\f0\\cf1\\b\\fs");
+            try out.appendSlice(allocator, "\\pard\\sb180\\sa100\\f0\\cf1\\b\\fs");
             try out.appendSlice(allocator, size);
             try out.append(allocator, ' ');
             try appendInlineRtf(&out, allocator, title, refs);
@@ -1997,7 +1997,7 @@ fn renderRtfTemplate(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
                 lazy_list_level = indent;
                 continue;
             }
-            try out.appendSlice(allocator, "\\pard\\sa110\\f0\\fs22\\cf1 ");
+            try out.appendSlice(allocator, "\\pard\\sa110\\sl300\\slmult1\\f0\\fs22\\cf1 ");
             try appendRtfEscaped(&out, allocator, trimmed);
             try out.appendSlice(allocator, "\\par\n");
             if (htmlBlockStart(trimmed)) |block| {
@@ -2496,7 +2496,7 @@ fn renderRtfTemplate(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
                     defer code_prefix.deinit(allocator);
                     try appendRtfContinuationPrefix(&code_prefix, allocator, active_list_level);
                     try out.appendSlice(allocator, code_prefix.items);
-                    try out.appendSlice(allocator, "\\f1\\fs20\\cf2 ");
+                    try out.appendSlice(allocator, "\\f1\\fs22\\cf2 ");
                     if (code_text.len == 0) {
                         try out.appendSlice(allocator, "\\~");
                     } else {
@@ -2550,7 +2550,7 @@ fn renderRtfTemplate(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
     }
 
     if (pending_plain) |pending| {
-        try out.appendSlice(allocator, "\\pard\\sa110\\f0\\fs22\\cf1 ");
+        try out.appendSlice(allocator, "\\pard\\sa110\\sl300\\slmult1\\f0\\fs22\\cf1 ");
         try appendInlineRtf(&out, allocator, pending, refs);
         try out.appendSlice(allocator, "\\par\n");
     }
@@ -2577,8 +2577,8 @@ fn appendPlainHeading(out: *std.ArrayList(u8), allocator: std.mem.Allocator, tit
 }
 
 fn appendRtfHeading(out: *std.ArrayList(u8), allocator: std.mem.Allocator, title: []const u8, level: usize, refs: []const ReferenceDef) !void {
-    const size = if (level == 1) "44" else "36";
-    try out.appendSlice(allocator, "\\pard\\sb220\\sa120\\f0\\cf1\\b\\fs");
+    const size = if (level == 1) "36" else "32";
+    try out.appendSlice(allocator, "\\pard\\sb180\\sa100\\f0\\cf1\\b\\fs");
     try out.appendSlice(allocator, size);
     try out.append(allocator, ' ');
     try appendRtfHeadingInline(out, allocator, title, size, refs);
@@ -2603,11 +2603,11 @@ fn appendPlainContainerHeading(out: *std.ArrayList(u8), allocator: std.mem.Alloc
 
 fn appendRtfContainerHeading(out: *std.ArrayList(u8), allocator: std.mem.Allocator, prefix: []const u8, suffix: []const u8, title: []const u8, level: usize, refs: []const ReferenceDef) !void {
     const size = switch (level) {
-        1 => "44",
-        2 => "36",
-        3 => "30",
-        4 => "26",
-        else => "24",
+        1 => "36",
+        2 => "32",
+        3 => "28",
+        4 => "24",
+        else => "22",
     };
     try out.appendSlice(allocator, prefix);
     try out.appendSlice(allocator, "\\b\\fs");
@@ -2629,11 +2629,11 @@ fn appendRtfHeadingInline(out: *std.ArrayList(u8), allocator: std.mem.Allocator,
 fn appendRtfHeadingInlineRestored(out: *std.ArrayList(u8), allocator: std.mem.Allocator, rendered: []const u8, size: []const u8) !void {
     var i: usize = 0;
     while (i < rendered.len) {
-        if (std.mem.startsWith(u8, rendered[i..], "\\f1\\fs20\\highlight4 ")) {
+        if (std.mem.startsWith(u8, rendered[i..], "\\f1\\fs22\\highlight4 ")) {
             try out.appendSlice(allocator, "\\f1\\fs");
             try out.appendSlice(allocator, size);
             try out.appendSlice(allocator, "\\highlight4 ");
-            i += "\\f1\\fs20\\highlight4 ".len;
+            i += "\\f1\\fs22\\highlight4 ".len;
             continue;
         }
 
@@ -2991,28 +2991,28 @@ fn appendPlainContainerFenceLinePrefix(out: *std.ArrayList(u8), allocator: std.m
 
 fn appendRtfContainerFenceOpen(out: *std.ArrayList(u8), allocator: std.mem.Allocator, container: ActiveContainerFence) !void {
     try appendRtfContainerFenceLinePrefix(out, allocator, container);
-    try out.appendSlice(allocator, "\\i0\\f1\\fs20\\cf2 ");
+    try out.appendSlice(allocator, "\\i0\\f1\\fs22\\cf2 ");
     try appendRtfEscaped(out, allocator, "---- code ----");
     try out.appendSlice(allocator, "\\par\n");
 }
 
 fn appendRtfContainerFenceOpenWithPrefix(out: *std.ArrayList(u8), allocator: std.mem.Allocator, prefix: []const u8, suffix: []const u8) !void {
     try out.appendSlice(allocator, prefix);
-    try out.appendSlice(allocator, "\\i0\\f1\\fs20\\cf2 ");
+    try out.appendSlice(allocator, "\\i0\\f1\\fs22\\cf2 ");
     try appendRtfEscaped(out, allocator, "---- code ----");
     try out.appendSlice(allocator, suffix);
 }
 
 fn appendRtfContainerFenceContent(out: *std.ArrayList(u8), allocator: std.mem.Allocator, container: ActiveContainerFence, content: []const u8) !void {
     try appendRtfContainerFenceLinePrefix(out, allocator, container);
-    try out.appendSlice(allocator, "\\i0\\f1\\fs20\\cf2 ");
+    try out.appendSlice(allocator, "\\i0\\f1\\fs22\\cf2 ");
     try appendRtfEscaped(out, allocator, content);
     try out.appendSlice(allocator, "\\par\n");
 }
 
 fn appendRtfContainerFenceClose(out: *std.ArrayList(u8), allocator: std.mem.Allocator, container: ActiveContainerFence) !void {
     try appendRtfContainerFenceLinePrefix(out, allocator, container);
-    try out.appendSlice(allocator, "\\i0\\f1\\fs20\\cf2 ");
+    try out.appendSlice(allocator, "\\i0\\f1\\fs22\\cf2 ");
     try appendRtfEscaped(out, allocator, "--------------");
     try out.appendSlice(allocator, "\\par\n");
 }
@@ -3557,9 +3557,9 @@ fn flushPendingRtfContainerHeading(
 ) !void {
     if (pending.*) |current| {
         const size = switch (level) {
-            1 => "44",
-            2 => "36",
-            else => "30",
+            1 => "36",
+            2 => "32",
+            else => "28",
         };
         try out.appendSlice(allocator, current.prefix);
         try out.appendSlice(allocator, "\\b\\fs");
@@ -3908,14 +3908,14 @@ fn appendPlainBlockquotePrefix(out: *std.ArrayList(u8), allocator: std.mem.Alloc
 
 fn appendRtfContinuationPrefix(out: *std.ArrayList(u8), allocator: std.mem.Allocator, level: usize) !void {
     const left = 360 + level * 360;
-    const prefix = try std.fmt.allocPrint(allocator, "\\pard\\li{}\\sa60\\f0\\fs22\\cf1 ", .{left});
+    const prefix = try std.fmt.allocPrint(allocator, "\\pard\\li{}\\sa60\\sl300\\slmult1\\f0\\fs22\\cf1 ", .{left});
     defer allocator.free(prefix);
     try out.appendSlice(allocator, prefix);
 }
 
 fn appendRtfBlockquotePrefix(out: *std.ArrayList(u8), allocator: std.mem.Allocator, quote_level: usize, content_level: usize) !void {
     const left = quote_level * 360 + content_level * 360;
-    const prefix = try std.fmt.allocPrint(allocator, "\\pard\\li{}\\ri240\\sb60\\sa100\\i\\cf2 ", .{left});
+    const prefix = try std.fmt.allocPrint(allocator, "\\pard\\li{}\\ri240\\sb60\\sa100\\sl300\\slmult1\\cf2 ", .{left});
     defer allocator.free(prefix);
     try out.appendSlice(allocator, prefix);
 }
@@ -3925,7 +3925,7 @@ fn appendRtfListPrefix(out: *std.ArrayList(u8), allocator: std.mem.Allocator, le
     const first: usize = if (ordered) 300 else 240;
     const left = base_left + level * 360;
     const tab_stop = rtfListTabStop(left, first, ordered, marker);
-    const prefix = try std.fmt.allocPrint(allocator, "\\pard\\li{}\\fi-{}\\tx{}\\sa70\\f0\\fs22\\cf1 ", .{ left, first, tab_stop });
+    const prefix = try std.fmt.allocPrint(allocator, "\\pard\\li{}\\fi-{}\\tx{}\\sa70\\sl300\\slmult1\\f0\\fs22\\cf1 ", .{ left, first, tab_stop });
     defer allocator.free(prefix);
     try out.appendSlice(allocator, prefix);
 }
@@ -5951,7 +5951,7 @@ fn appendInlineRtf(out: *std.ArrayList(u8), allocator: std.mem.Allocator, text: 
             if (parseCodeSpan(text, i)) |code| {
                 const normalized = try normalizeCodeSpan(allocator, code.content);
                 defer allocator.free(normalized);
-                try out.appendSlice(allocator, "\\f1\\fs20\\highlight4 ");
+                try out.appendSlice(allocator, "\\f1\\fs22\\highlight4 ");
                 try appendRtfEscaped(out, allocator, normalized);
                 try out.appendSlice(allocator, "\\highlight0\\f0\\fs22 ");
                 i = code.end;
@@ -6388,7 +6388,7 @@ fn appendInlineNoLinksRtf(out: *std.ArrayList(u8), allocator: std.mem.Allocator,
             if (parseCodeSpan(text, i)) |code| {
                 const normalized = try normalizeCodeSpan(allocator, code.content);
                 defer allocator.free(normalized);
-                try out.appendSlice(allocator, "\\f1\\fs20\\highlight4 ");
+                try out.appendSlice(allocator, "\\f1\\fs22\\highlight4 ");
                 try appendRtfEscaped(out, allocator, normalized);
                 try out.appendSlice(allocator, "\\highlight0\\f0\\fs22 ");
                 i = code.end;
@@ -7218,7 +7218,7 @@ test "ignores utf8 bom before first markdown construct" {
     const rtf = try renderRtf(std.testing.allocator, heading_input);
     defer std.testing.allocator.free(rtf);
 
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs44 BOM Heading") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs36 BOM Heading") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "# BOM Heading") == null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\cf3\\ul inline") != null);
 }
@@ -7266,7 +7266,7 @@ test "handles cr-only line endings as markdown line endings" {
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
 
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs44 Cycle 78 CR Line Endings") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs36 Cycle 78 CR Line Endings") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\cf3\\ul ref link") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\bullet\\tab cr list item") != null);
 }
@@ -7295,8 +7295,8 @@ test "renders setext headings and escaped inline markers" {
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
 
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs44 Title One") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs36 Title Two") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs36 Title One") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs32 Title Two") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\cf3\\ul not link") == null);
 }
 
@@ -7320,8 +7320,8 @@ test "preserves trailing backslash in setext heading text" {
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
 
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs36 Heading with two trailing spaces") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs36 Heading with trailing backslash\\\\") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs32 Heading with two trailing spaces") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs32 Heading with trailing backslash\\\\") != null);
 }
 
 test "renders hard breaks inside multiline setext headings" {
@@ -7353,11 +7353,11 @@ test "restores heading RTF style after inline code and links" {
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
 
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs20\\highlight4 code") == null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs36\\highlight4 code") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\highlight4 code") == null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs32\\highlight4 code") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\highlight0\\f0\\fs22  and \\cf3\\ul link") == null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\highlight0 \\f0\\cf1\\b\\fs36  and \\cf3\\ul link") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\ulnone \\f0\\cf1\\b\\fs36 \\cf2 <https://example.test/inline>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\highlight0 \\f0\\cf1\\b\\fs32  and \\cf3\\ul link") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\ulnone \\f0\\cf1\\b\\fs32 \\cf2 <https://example.test/inline>") != null);
 }
 
 test "renders GFM table cells and leaves standalone inline pipes as text" {
@@ -7415,9 +7415,9 @@ test "renders setext headings inside blockquote and list containers" {
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
 
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs36 Quote Setext Heading") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs44 List Setext Heading") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs36 Quoted List Setext Heading") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs32 Quote Setext Heading") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs36 List Setext Heading") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs32 Quoted List Setext Heading") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "after quote \\b bold\\b0") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "after list \\b bold\\b0") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "after quoted list \\b bold\\b0") != null);
@@ -7442,8 +7442,8 @@ test "renders tab-padded setext underlines inside blockquotes" {
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
 
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs36 quoted setext candidate") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs36 quoted direct-tab setext candidate") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs32 quoted setext candidate") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs32 quoted direct-tab setext candidate") != null);
 }
 
 test "renders tab-padded setext underlines inside list items" {
@@ -7475,12 +7475,12 @@ test "renders tab-padded setext underlines inside list items" {
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
 
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs36 list setext candidate") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs36 direct tab list setext candidate") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs36 four-space list setext candidate") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs36 five-space list setext candidate") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs32 list setext candidate") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs32 direct tab list setext candidate") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs32 four-space list setext candidate") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs32 five-space list setext candidate") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "six-space stays paragraph") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs36 six-space stays paragraph") == null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs32 six-space stays paragraph") == null);
 }
 
 test "renders multiline setext headings inside containers" {
@@ -7514,9 +7514,9 @@ test "renders multiline setext headings inside containers" {
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
 
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs36 Quote multi line heading") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs44 List multi line heading") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs36 Quoted list multi line heading") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs32 Quote multi line heading") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs36 List multi line heading") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs32 Quoted list multi line heading") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "after quote \\b bold\\b0") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "after list \\b bold\\b0") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "after quoted list \\b bold\\b0") != null);
@@ -7558,10 +7558,10 @@ test "renders ATX headings inside blockquote and list containers" {
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
 
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs36 Quote ATX Heading") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs44 List ATX Heading") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs36 Loose List ATX Heading") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs30 Quoted List ATX Heading") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs32 Quote ATX Heading") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs36 List ATX Heading") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs32 Loose List ATX Heading") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs28 Quoted List ATX Heading") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "after quote \\b bold\\b0") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "after list \\b bold\\b0") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "after loose list \\b bold\\b0") != null);
@@ -7592,7 +7592,7 @@ test "does not treat indented setext underline as heading" {
     defer std.testing.allocator.free(rtf);
 
     try std.testing.expect(std.mem.indexOf(u8, rtf, "Paragraph before indented underline ---") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs36 Normal Setext") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs32 Normal Setext") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "Indented equals should also stay code ===") != null);
 }
 
@@ -8460,8 +8460,8 @@ test "renders ATX closing markers and tilde fenced code" {
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
 
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs30 Heading with closing hashes") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs20\\cf2 const message") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs28 Heading with closing hashes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\cf2 const message") != null);
 }
 
 test "keeps fenced code inert inside blockquote and list containers" {
@@ -8554,9 +8554,9 @@ test "strips fenced code content indentation by columns across tabs" {
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
 
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs20\\cf2 two spaces stripped") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs20\\cf2   four spaces becomes two") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs20\\cf2   tab starts content") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\cf2 two spaces stripped") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\cf2   four spaces becomes two") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\cf2   tab starts content") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\ttab starts content") == null);
 }
 
@@ -8588,10 +8588,10 @@ test "renders empty ATX headings whose marker run ends the line" {
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
 
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs44 \\b0") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs30 \\b0") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs24 \\b0") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs36 Filled Heading") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs36 \\b0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs28 \\b0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs22 \\b0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs32 Filled Heading") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "#######") != null);
 }
 
@@ -8620,9 +8620,9 @@ test "matches fenced code closing marker type and length" {
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
 
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs20\\cf2 ```\\par") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs20\\cf2 still code after shorter inner fence") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs20\\cf2 ``` this mismatched backtick fence should stay code") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\cf2 ```\\par") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\cf2 still code after shorter inner fence") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\cf2 ``` this mismatched backtick fence should stay code") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "Paragraph after fences.") != null);
 }
 
@@ -8649,9 +8649,9 @@ test "rejects backtick fence info strings containing backticks" {
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
 
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs20\\cf2 foo after invalid backtick fence") == null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\cf2 foo after invalid backtick fence") == null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "foo after invalid backtick fence should stay paragraph text.") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs20\\cf2 inside tilde code block") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\cf2 inside tilde code block") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "After tilde fence.") != null);
 }
 
@@ -8676,9 +8676,9 @@ test "does not close fenced code with four-space indented fence" {
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
 
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs20\\cf2 first code line") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs20\\cf2     ```") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs20\\cf2 still code after four-space pseudo close") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\cf2 first code line") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\cf2     ```") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\cf2 still code after four-space pseudo close") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "After fence paragraph.") != null);
 }
 
@@ -8704,10 +8704,10 @@ test "strips opening fence indentation from fenced code content" {
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
 
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs20\\cf2 two spaces should be stripped") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs20\\cf2 one space should also be stripped") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs20\\cf2 no strip needed here") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs20\\cf2   two spaces should be stripped") == null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\cf2 two spaces should be stripped") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\cf2 one space should also be stripped") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\cf2 no strip needed here") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\cf2   two spaces should be stripped") == null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "After indented fence.") != null);
 }
 
@@ -8731,10 +8731,10 @@ test "does not let indented code interrupt paragraphs" {
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
 
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs30 three-space heading should render as heading") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs20\\cf2 # four-space heading should stay indented code") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs28 three-space heading should render as heading") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\cf2 # four-space heading should stay indented code") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "Paragraph before four-space pseudo heading ## should remain paragraph continuation") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs20\\cf2 ## should remain paragraph continuation") == null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\cf2 ## should remain paragraph continuation") == null);
 }
 
 test "renders ordered paren markers, thematic breaks, and link titles" {
@@ -8910,9 +8910,9 @@ test "renders zero-start ordered sibling lists without lazy nesting" {
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
 
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li520\\fi-300\\tx640\\sa70\\f0\\fs22\\cf1 0.\\tab zero-start") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li520\\fi-300\\tx640\\sa70\\f0\\fs22\\cf1 2.\\tab two-start") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li880\\fi-300\\tx1000\\sa70\\f0\\fs22\\cf1 2.\\tab two-start") == null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li520\\fi-300\\tx640\\sa70\\sl300\\slmult1\\f0\\fs22\\cf1 0.\\tab zero-start") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li520\\fi-300\\tx640\\sa70\\sl300\\slmult1\\f0\\fs22\\cf1 2.\\tab two-start") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li880\\fi-300\\tx1000\\sa70\\sl300\\slmult1\\f0\\fs22\\cf1 2.\\tab two-start") == null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "Paragraph before 0. zero cannot interrupt paragraph") != null);
 }
 
@@ -8935,7 +8935,7 @@ test "keeps non-one ordered markers inside quoted paragraphs" {
     defer std.testing.allocator.free(rtf);
 
     try std.testing.expect(std.mem.indexOf(u8, rtf, "Quote before 0. zero cannot interrupt quoted paragraph") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "Quote before\\i0\\cf1\\par\n\\pard\\li360\\ri240\\sb60\\sa100\\i\\cf2 0.") == null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "Quote before\\i0\\cf1\\par\n\\pard\\li360\\ri240\\sb60\\sa100\\sl300\\slmult1\\cf2 0.") == null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "1.\\tab one can interrupt quoted paragraph as ordered list") != null);
 }
 
@@ -9070,7 +9070,7 @@ test "does not over-indent blockquote paragraphs after tab padding" {
     defer std.testing.allocator.free(rtf);
 
     try std.testing.expect(std.mem.indexOf(u8, rtf, "blockquote tab content after marker should render as text") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li1080\\ri240\\sb60\\sa100\\i\\cf2 blockquote tab content") == null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li1080\\ri240\\sb60\\sa100\\sl300\\slmult1\\cf2 blockquote tab content") == null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\bullet\\tab list tab content after bullet marker") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "1.\\tab ordered tab content after marker") != null);
 }
@@ -9249,7 +9249,7 @@ test "renders inline markdown inside link labels" {
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
 
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\cf3\\ul \\b bold label\\b0  and \\f1\\fs20\\highlight4 code") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\cf3\\ul \\b bold label\\b0  and \\f1\\fs22\\highlight4 code") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\cf3\\ul \\i italic ref\\i0  and \\strike strike ref\\strike0") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\cf3\\ul literal ] bracket") != null);
 }
@@ -9753,8 +9753,8 @@ test "preserves hidden reference list markers before heading continuations" {
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
 
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\bullet\\tab \\b\\fs36 heading link") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\bullet\\tab \\b\\fs30 quoted heading link") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\bullet\\tab \\b\\fs32 heading link") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\bullet\\tab \\b\\fs28 quoted heading link") != null);
 }
 
 test "preserves hidden reference list markers before fenced code continuations" {
@@ -9782,7 +9782,7 @@ test "preserves hidden reference list markers before fenced code continuations" 
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
 
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\bullet\\tab \\i0\\f1\\fs20\\cf2 ---- code ----") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\bullet\\tab \\i0\\f1\\fs22\\cf2 ---- code ----") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "[qcode] should stay literal inside code") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\cf2 </qcode-dest>") == null);
 }
@@ -11027,9 +11027,9 @@ test "renders multi-backtick code spans as a single literal span" {
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
 
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs20\\highlight4 plain **not bold** code") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs20\\highlight4 literal ` tick and **not bold** inside") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs20\\highlight4 two `` ticks and [not link](x)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\highlight4 plain **not bold** code") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\highlight4 literal ` tick and **not bold** inside") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\highlight4 two `` ticks and [not link](x)") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\cf3\\ul not link") == null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "``no matching closer `") != null);
 }
@@ -11343,7 +11343,7 @@ test "keeps task item hard breaks when inline spans cross lines" {
     defer std.testing.allocator.free(rtf);
 
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\u9744?\\tab Task \\b strong across hard break\\line still strong\\b0") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\u9745?\\tab Done task \\f1\\fs20\\highlight4 code across newline\\\\ still code") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\u9745?\\tab Done task \\f1\\fs22\\highlight4 code across newline\\\\ still code") != null);
 }
 
 test "renders inline spans across quoted list continuations" {
@@ -11476,10 +11476,10 @@ test "renders independent three-space list markers at top level" {
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
 
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li480\\fi-240\\tx600\\sa70\\f0\\fs22\\cf1 \\bullet\\tab top-level bullet despite leading spaces") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li520\\fi-300\\tx640\\sa70\\f0\\fs22\\cf1 1.\\tab top-level ordered despite leading spaces") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs20\\cf2 - four-space bullet is code") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li840\\fi-240\\tx960\\sa70\\f0\\fs22\\cf1 \\bullet\\tab child") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li480\\fi-240\\tx600\\sa70\\sl300\\slmult1\\f0\\fs22\\cf1 \\bullet\\tab top-level bullet despite leading spaces") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li520\\fi-300\\tx640\\sa70\\sl300\\slmult1\\f0\\fs22\\cf1 1.\\tab top-level ordered despite leading spaces") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\cf2 - four-space bullet is code") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li840\\fi-240\\tx960\\sa70\\sl300\\slmult1\\f0\\fs22\\cf1 \\bullet\\tab child") != null);
 }
 
 test "renders tab-indented list marker boundaries by CommonMark tab stops" {
@@ -11505,9 +11505,9 @@ test "renders tab-indented list marker boundaries by CommonMark tab stops" {
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
 
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs20\\cf2 - tab bullet literal code") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs20\\cf2 - space-tab bullet literal code") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li840\\fi-240\\tx960\\sa70\\f0\\fs22\\cf1 \\bullet\\tab tab child item") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\cf2 - tab bullet literal code") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\cf2 - space-tab bullet literal code") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li840\\fi-240\\tx960\\sa70\\sl300\\slmult1\\f0\\fs22\\cf1 \\bullet\\tab tab child item") != null);
 }
 
 test "renders blockquote lazy paragraph continuations" {
@@ -11550,8 +11550,8 @@ test "renders blockquote lazy paragraph continuations" {
     defer std.testing.allocator.free(rtf);
 
     try std.testing.expect(std.mem.indexOf(u8, rtf, "quoted paragraph first lazy continuation should stay in quote quoted paragraph after lazy") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li360\\ri240\\sb60\\sa100\\i\\cf2 - indented lazy line should stay paragraph text in quote") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li360\\ri240\\sb60\\sa100\\i\\cf2 \\bullet\\tab this unquoted list") == null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li360\\ri240\\sb60\\sa100\\sl300\\slmult1\\cf2 - indented lazy line should stay paragraph text in quote") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li360\\ri240\\sb60\\sa100\\sl300\\slmult1\\cf2 \\bullet\\tab this unquoted list") == null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "------------------------------") != null);
 }
 
@@ -11580,7 +11580,7 @@ test "separates Korean circle outline items without changing normal soft breaks 
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
     try std.testing.expect(std.mem.count(u8, rtf, "\\u9675?") == 5);
-    try std.testing.expect(std.mem.count(u8, rtf, "\\par\n\\pard\\sa110\\f0\\fs22\\cf1 \\u9675?") == 3);
+    try std.testing.expect(std.mem.count(u8, rtf, "\\par\n\\pard\\sa110\\sl300\\slmult1\\f0\\fs22\\cf1 \\u9675?") == 3);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "ordinary first line ordinary continuation") != null);
 }
 
@@ -11652,9 +11652,9 @@ test "renders nested blockquotes without leaking raw markers" {
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
 
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li720\\ri240\\sb60\\sa100\\i\\cf2 inner compact quote") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li720\\ri240\\sb60\\sa100\\sl300\\slmult1\\cf2 inner compact quote") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "inner spaced quote") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li720\\ri240\\sb60\\sa100\\i\\cf2 \\bullet\\tab nested quoted bullet") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li720\\ri240\\sb60\\sa100\\sl300\\slmult1\\cf2 \\bullet\\tab nested quoted bullet") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\bullet\\tab nested quoted bullet nested quoted continuation") != null);
 }
 
@@ -11683,9 +11683,9 @@ test "renders top-level indented code blocks as code without stealing list conti
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
 
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li360\\ri240\\sa0\\f1\\fs20\\cf2 const value = 42;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li360\\ri240\\sa0\\f1\\fs22\\cf2 const value = 42;") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\bullet\\tab parent list item continuation remains list text") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li840\\fi-240\\tx960\\sa70\\f0\\fs22\\cf1 \\bullet\\tab nested item remains list item") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li840\\fi-240\\tx960\\sa70\\sl300\\slmult1\\f0\\fs22\\cf1 \\bullet\\tab nested item remains list item") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\bullet\\tab nested item remains list item nested continuation remains list text") != null);
 }
 
@@ -11706,7 +11706,7 @@ test "keeps indented code inert inside loose list items" {
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
 
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs20\\cf2   code inside list **not bold**") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\cf2   code inside list **not bold**") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\cf3\\ul link\\ulnone") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b not bold\\b0") == null);
 }
@@ -11748,7 +11748,7 @@ test "renders GFM table alignment inline markup and row width rules" {
     try std.testing.expect(std.mem.indexOf(u8, rtf, "escaped | pipe") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b bold\\b0") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\cf3\\ul link\\ulnone") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs20\\highlight4 code") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\highlight4 code") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "surplus") == null);
 }
 
@@ -11765,6 +11765,37 @@ test "does not treat a mismatched delimiter row as a table" {
     try std.testing.expect(std.mem.indexOf(u8, rtf, "| A | B |") != null);
 }
 
+test "keeps a readable hierarchy across paragraphs lists quotes and code" {
+    const input =
+        \\# Main
+        \\
+        \\## Section
+        \\
+        \\### Detail
+        \\
+        \\Paragraph
+        \\
+        \\- Item
+        \\
+        \\> Quote
+        \\
+        \\```zig
+        \\code
+        \\```
+    ;
+    const rtf = try renderRtf(std.testing.allocator, input);
+    defer std.testing.allocator.free(rtf);
+
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "{\\f0 Malgun Gothic;}{\\f1 Consolas;}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs36 Main") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs32 Section") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs28 Detail") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\sa110\\sl300\\slmult1\\f0\\fs22\\cf1 Paragraph") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\sa70\\sl300\\slmult1\\f0\\fs22\\cf1 \\bullet\\tab Item") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\sa100\\sl300\\slmult1\\cf2 Quote") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\cf2 code") != null);
+}
+
 test "renders rich text formatting for GUI" {
     const input =
         \\# Title
@@ -11776,10 +11807,10 @@ test "renders rich text formatting for GUI" {
     defer std.testing.allocator.free(rtf);
 
     try std.testing.expect(std.mem.startsWith(u8, rtf, "{\\rtf1"));
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs44 Title") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs36 Title") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b bold\\b0") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\i emphasis\\i0") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs20\\highlight4 code") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\highlight4 code") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\cf3\\ul link") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\u9745?\\tab task") != null);
 }
@@ -11848,7 +11879,7 @@ test "renders ultraqa fixture rich text signals" {
     const rtf = try renderRtf(std.testing.allocator, input);
     defer std.testing.allocator.free(rtf);
 
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs44 zmd UltraQA Rendering Fixture") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs36 zmd UltraQA Rendering Fixture") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b bold text\\b0") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\i italic text\\i0") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\highlight4 inline code") != null);
@@ -11856,8 +11887,8 @@ test "renders ultraqa fixture rich text signals" {
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\cf3\\ul a visible link") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\u9745?\\tab completed task item") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "1.\\tab ordered first item") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\i\\cf2 Blockquote") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs20\\cf2 const std") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\cf2 Blockquote") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\f1\\fs22\\cf2 const std") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\trowd\\trgaph90") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b Feature\\b0 \\cell") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "| Feature | Expected visual signal |") == null);
