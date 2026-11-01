@@ -1,21 +1,34 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Stable version to sign and publish (X.Y.Z)
+        required: true
+        type: string
 
 permissions:
+  actions: read
   contents: write
+
+concurrency:
+  group: release-${{ inputs.version }}
+  cancel-in-progress: false
 
 jobs:
   windows-installer:
     name: Windows installer
     runs-on: windows-latest
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Validate release version
         shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
         run: |
           $buildText = Get-Content build.zig -Raw
           $manifestText = Get-Content build.zig.zon -Raw
@@ -23,15 +36,65 @@ jobs:
           $manifestMatches = [regex]::Matches($manifestText, '(?m)^\s*\.version\s*=\s*"([^"]+)",\s*$')
           if ($buildMatches.Count -ne 1) { throw 'Expected exactly one app_version in build.zig' }
           if ($manifestMatches.Count -ne 1) { throw 'Expected exactly one .version in build.zig.zon' }
+          if ($env:RELEASE_VERSION -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') {
+            throw "Release version must be a stable X.Y.Z version: $env:RELEASE_VERSION"
+          }
 
           $buildVersion = $buildMatches[0].Groups[1].Value
           $manifestVersion = $manifestMatches[0].Groups[1].Value
-          if ($env:GITHUB_REF_NAME -notmatch '^v(?<version>[0-9]+\.[0-9]+\.[0-9]+)$') {
-            throw "Release tag must be a stable vX.Y.Z version: $env:GITHUB_REF_NAME"
+          if ($buildVersion -ne $manifestVersion -or $buildVersion -ne $env:RELEASE_VERSION) {
+            throw "Version mismatch: build.zig=$buildVersion build.zig.zon=$manifestVersion requested=$env:RELEASE_VERSION"
           }
-          $tagVersion = $Matches.version
-          if ($buildVersion -ne $manifestVersion -or $buildVersion -ne $tagVersion) {
-            throw "Version mismatch: build.zig=$buildVersion build.zig.zon=$manifestVersion tag=$env:GITHUB_REF_NAME"
+      - name: Validate release source
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          if ($env:GITHUB_REF -ne 'refs/heads/main' -or $env:GITHUB_REF_NAME -ne 'main') {
+            throw 'Release workflow must be dispatched from the main branch'
+          }
+
+          $headSha = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to resolve the checked-out commit' }
+          if ($headSha -ne $env:GITHUB_SHA) {
+            throw "Checked-out commit $headSha does not match workflow commit $env:GITHUB_SHA"
+          }
+
+          $mainLine = git ls-remote --exit-code origin refs/heads/main
+          if ($LASTEXITCODE -ne 0 -or $mainLine.Count -ne 1) { throw 'Unable to resolve current origin/main' }
+          $mainSha = ([string]$mainLine).Split("`t")[0]
+          if ($mainSha -ne $headSha) {
+            throw "Workflow commit $headSha is not current origin/main $mainSha"
+          }
+
+          $tag = "v$env:RELEASE_VERSION"
+          git fetch --force --no-tags origin "refs/tags/${tag}:refs/tags/${tag}"
+          if ($LASTEXITCODE -ne 0) { throw "Release tag $tag does not exist on origin" }
+          $tagSha = (git rev-parse "${tag}^{commit}").Trim()
+          if ($LASTEXITCODE -ne 0) { throw "Unable to resolve release tag $tag" }
+          if ($tagSha -ne $headSha) {
+            throw "Release tag $tag points to $tagSha instead of workflow commit $headSha"
+          }
+      - name: Validate SignPath configuration
+        shell: pwsh
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+          SIGNPATH_ORGANIZATION_ID: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          SIGNPATH_PROJECT_SLUG: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          SIGNPATH_SIGNING_POLICY_SLUG: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          SIGNPATH_ARTIFACT_CONFIGURATION_SLUG: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+        run: |
+          $required = @(
+            'SIGNPATH_API_TOKEN',
+            'SIGNPATH_ORGANIZATION_ID',
+            'SIGNPATH_PROJECT_SLUG',
+            'SIGNPATH_SIGNING_POLICY_SLUG',
+            'SIGNPATH_ARTIFACT_CONFIGURATION_SLUG'
+          )
+          foreach ($name in $required) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              throw "Required SignPath configuration is missing: $name"
+            }
           }
       - name: Test release safety policy
         shell: pwsh
@@ -48,28 +111,103 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Test installation while an executable is running
         run: pwsh -File test/install_running.ps1
-      - name: Package installer
+      - name: Stage unsigned installer
         shell: pwsh
         run: |
-          Copy-Item zig-out\bin\zmd-setup.exe zmd-setup-windows-x86_64.exe
-          $hash = (Get-FileHash zmd-setup-windows-x86_64.exe -Algorithm SHA256).Hash.ToLower()
-          "$hash  zmd-setup-windows-x86_64.exe" | Out-File -Encoding ascii zmd-setup-windows-x86_64.exe.sha256
+          New-Item -ItemType Directory -Path unsigned -Force | Out-Null
+          Copy-Item zig-out\bin\zmd-setup.exe unsigned\zmd-setup-windows-x86_64.exe
+      - name: Upload unsigned artifact for SignPath
+        id: upload-unsigned-artifact
+        uses: actions/upload-artifact@v4
+        with:
+          # SignPath artifact configuration must use <zip-file> as its root.
+          name: zmd-unsigned-${{ inputs.version }}
+          path: unsigned/zmd-setup-windows-x86_64.exe
+          if-no-files-found: error
+          retention-days: 1
+      - name: Submit SignPath signing request
+        id: signpath
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.upload-unsigned-artifact.outputs.artifact-id }}
+          github-token: ${{ github.token }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 9000
+          output-artifact-directory: ${{ runner.temp }}/signpath-signed
+      - name: Validate signed installer and create checksum
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          SIGNING_REQUEST_ID: ${{ steps.signpath.outputs.signing-request-id }}
+          SIGNED_ARTIFACT_DIRECTORY: ${{ runner.temp }}/signpath-signed
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:SIGNING_REQUEST_ID)) {
+            throw 'SignPath did not return a signing request ID'
+          }
+
+          $assetName = 'zmd-setup-windows-x86_64.exe'
+          $signedFiles = @(Get-ChildItem -LiteralPath $env:SIGNED_ARTIFACT_DIRECTORY -Recurse -File |
+            Where-Object { $_.Name -eq $assetName })
+          if ($signedFiles.Count -ne 1) {
+            throw "Expected exactly one signed $assetName, found $($signedFiles.Count)"
+          }
+
+          $signature = Get-AuthenticodeSignature -LiteralPath $signedFiles[0].FullName
+          if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
+            throw "Signed installer has invalid Authenticode status: $($signature.Status)"
+          }
+          $publisher = $signature.SignerCertificate.Subject
+          if ($publisher -notmatch '(?i)(^|,\s*)(CN|O)=SignPath Foundation(,|$)') {
+            throw "Unexpected Authenticode publisher: $publisher"
+          }
+
+          $versionInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($signedFiles[0].FullName)
+          if ($versionInfo.ProductName -ne 'zmd') {
+            throw "Unexpected signed installer product name: $($versionInfo.ProductName)"
+          }
+          foreach ($actualVersion in @($versionInfo.FileVersion, $versionInfo.ProductVersion)) {
+            if ($actualVersion -ne $env:RELEASE_VERSION) {
+              throw "Signed installer version $actualVersion does not match $env:RELEASE_VERSION"
+            }
+          }
+
+          Copy-Item -LiteralPath $signedFiles[0].FullName -Destination $assetName
+          $hash = (Get-FileHash -LiteralPath $assetName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $assetName" | Out-File -Encoding ascii "$assetName.sha256"
       - name: Publish GitHub release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
         run: |
-          $tag = $env:GITHUB_REF_NAME
+          $tag = "v$env:RELEASE_VERSION"
+          function Assert-ReleaseTagStillMatches {
+            git fetch --force --no-tags origin "refs/tags/${tag}:refs/tags/${tag}"
+            if ($LASTEXITCODE -ne 0) { throw "Release tag $tag no longer exists on origin" }
+            $currentTagSha = (git rev-parse "${tag}^{commit}").Trim()
+            if ($LASTEXITCODE -ne 0 -or $currentTagSha -ne $env:GITHUB_SHA) {
+              throw "Release tag $tag no longer points to workflow commit $env:GITHUB_SHA"
+            }
+          }
+
+          Assert-ReleaseTagStillMatches
           $assets = @(
             'zmd-setup-windows-x86_64.exe',
             'zmd-setup-windows-x86_64.exe.sha256'
           )
           $release = gh release view $tag --json isDraft 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --title $tag --generate-notes --notes 'Windows installer: unsigned. Code signing policy: https://github.com/GomGomi907/zmd/blob/main/docs/SIGNING.md' --draft --verify-tag
+            $releaseExists = $false
+            gh release create $tag --title $tag --generate-notes --notes 'Windows installer: signed. Free code signing provided by SignPath.io, certificate by SignPath Foundation. SignPath.io: https://signpath.io/ SignPath Foundation: https://signpath.org/ Code signing policy: https://github.com/GomGomi907/zmd/blob/main/docs/SIGNING.md' --draft --verify-tag
             if ($LASTEXITCODE -ne 0) { throw "Unable to create draft release $tag" }
             $isDraft = $true
           } else {
+            $releaseExists = $true
             $isDraft = ($release | ConvertFrom-Json).isDraft
           }
 
@@ -92,6 +230,9 @@ jobs:
           }
 
           if ($missing.Count -gt 0) {
+            if ($releaseExists -and -not $isDraft) {
+              throw "Published release $tag is missing required assets and cannot be modified"
+            }
             gh release upload $tag @missing
             if ($LASTEXITCODE -ne 0) { throw "Unable to upload release assets for $tag" }
           }
@@ -107,6 +248,7 @@ jobs:
           }
 
           if ($isDraft) {
+            Assert-ReleaseTagStillMatches
             gh release edit $tag --draft=false
             if ($LASTEXITCODE -ne 0) { throw "Unable to publish verified release $tag" }
           }

@@ -2,7 +2,7 @@
 
 ## 현재 상태
 
-zmd의 공개 Windows 릴리스는 현재 디지털 서명되지 않았습니다. SignPath Foundation 승인은 확인되지 않았고, SignPath 서명도 활성화되지 않았습니다. 승인과 서명 활성화가 확인되기 전에는 릴리스를 서명된 것으로 표시하지 않습니다.
+zmd의 공개 Windows 릴리스는 현재 디지털 서명되지 않았습니다. SignPath Foundation이 신청 접수를 확인했으며, 아직 승인 결과는 확인되지 않았고 SignPath 서명도 활성화되지 않았습니다. 승인과 서명 활성화가 확인되기 전에는 릴리스를 서명된 것으로 표시하지 않습니다.
 
 승인된 뒤 서명 릴리스에는 다음 고지를 사용합니다: “Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).” 적용 조건은 [SignPath Foundation conditions for Open Source projects](https://signpath.org/terms.html)를 따릅니다.
 

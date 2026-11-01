@@ -77,7 +77,7 @@ To uninstall the current Windows release, close zmd, run the installed executabl
 
 ## Code signing policy
 
-Windows releases are currently unsigned. SignPath Foundation acceptance has not been confirmed and signing has not been enabled. If the project is accepted, its signed releases will use: “Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).”
+Windows releases are currently unsigned. SignPath Foundation has acknowledged receipt of the project application; acceptance has not been confirmed and signing has not been enabled. If the project is accepted, its signed releases will use: “Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).”
 
 The project maintainer, [GomGomi907](https://github.com/GomGomi907), is the author/committer, reviewer of external contributions, and approver of signing requests. Every Foundation signing request requires manual approval. Anyone granted repository or SignPath access must use multi-factor authentication.
 
