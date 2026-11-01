@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const version = "0.2.0";
+pub const version = "0.2.1";
 
 pub const RtfImageFormat = enum {
     png,
@@ -566,7 +566,7 @@ pub fn render(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
                 continue;
             }
         }
-        if (try consumePendingPlainContainerContinuation(allocator, &pending_container, line, trimmed, refs)) {
+        if (!isOutlineCircleLine(line) and try consumePendingPlainContainerContinuation(allocator, &pending_container, line, trimmed, refs)) {
             continue;
         }
         if (pending_container != null) {
@@ -591,7 +591,7 @@ pub fn render(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
                     list_context = false;
                     continue;
                 }
-                if (isPlainParagraphContinuationLine(line, trimmed, list_context)) {
+                if (!isOutlineCircleLine(line) and isPlainParagraphContinuationLine(line, trimmed, list_context)) {
                     const current = paragraphContinuationLine(pending, line, trimmed);
                     const separator = if (pending_hard_break) "\n" else " ";
                     const combined = try std.fmt.allocPrint(allocator, "{s}{s}{s}", .{ pending, separator, current.text });
@@ -758,7 +758,7 @@ pub fn render(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
             continue;
         }
 
-        if (active_fence == null and lazy_list_level > 0 and isLazyListParagraphContinuation(line, trimmed)) {
+        if (active_fence == null and lazy_list_level > 0 and !isOutlineCircleLine(line) and isLazyListParagraphContinuation(line, trimmed)) {
             const prefix = try buildPlainListPrefix(allocator, lazy_list_level, "");
             defer allocator.free(prefix);
             _ = try queueOrAppendPlainContainer(&out, allocator, &pending_container, .list, 0, null, prefix, trimmed, refs);
@@ -1404,7 +1404,7 @@ pub fn render(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
             }
         }
 
-        if (listIndentLevel(line) > 0) {
+        if (listIndentLevel(line) > 0 and !isOutlineCircleLine(line)) {
             const indent = listIndentLevel(line);
             const prefix = try buildPlainListPrefix(allocator, indent, "");
             defer allocator.free(prefix);
@@ -1597,7 +1597,7 @@ fn renderRtfTemplate(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
                 continue;
             }
         }
-        if (try consumePendingRtfContainerContinuation(allocator, &pending_container, line, trimmed, refs)) {
+        if (!isOutlineCircleLine(line) and try consumePendingRtfContainerContinuation(allocator, &pending_container, line, trimmed, refs)) {
             continue;
         }
         if (pending_container != null) {
@@ -1642,7 +1642,7 @@ fn renderRtfTemplate(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
                     list_context = false;
                     continue;
                 }
-                if (isPlainParagraphContinuationLine(line, trimmed, list_context)) {
+                if (!isOutlineCircleLine(line) and isPlainParagraphContinuationLine(line, trimmed, list_context)) {
                     const current = paragraphContinuationLine(pending, line, trimmed);
                     const separator = if (pending_hard_break) "\n" else " ";
                     const combined = try std.fmt.allocPrint(allocator, "{s}{s}{s}", .{ pending, separator, current.text });
@@ -1813,7 +1813,7 @@ fn renderRtfTemplate(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
             continue;
         }
 
-        if (active_fence == null and lazy_list_level > 0 and isLazyListParagraphContinuation(line, trimmed)) {
+        if (active_fence == null and lazy_list_level > 0 and !isOutlineCircleLine(line) and isLazyListParagraphContinuation(line, trimmed)) {
             var prefix: std.ArrayList(u8) = .empty;
             defer prefix.deinit(allocator);
             try appendRtfContinuationPrefix(&prefix, allocator, lazy_list_level);
@@ -2484,7 +2484,7 @@ fn renderRtfTemplate(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
             }
         }
 
-        if (listIndentLevel(line) > 0) {
+        if (listIndentLevel(line) > 0 and !isOutlineCircleLine(line)) {
             const indent = listIndentLevel(line);
             var prefix: std.ArrayList(u8) = .empty;
             defer prefix.deinit(allocator);
@@ -4108,6 +4108,18 @@ fn parseBlockquote(line: []const u8) ?BlockquoteLine {
 
     if (level == 0) return null;
     return .{ .level = level, .content = rest };
+}
+
+// Common Korean outline documents use a literal circle as their item marker.
+// Keep this extension separate from CommonMark lists so the original glyph is preserved.
+fn isOutlineCircleLine(line: []const u8) bool {
+    var indent: usize = 0;
+    while (indent < line.len and line[indent] == ' ') : (indent += 1) {}
+    if (indent > 3) return false;
+    const rest = line[indent..];
+    const marker = "○";
+    return std.mem.startsWith(u8, rest, marker) and rest.len > marker.len and
+        (rest[marker.len] == ' ' or rest[marker.len] == '\t');
 }
 
 fn unorderedListText(line: []const u8) ?[]const u8 {
@@ -11541,6 +11553,35 @@ test "renders blockquote lazy paragraph continuations" {
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li360\\ri240\\sb60\\sa100\\i\\cf2 - indented lazy line should stay paragraph text in quote") != null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\pard\\li360\\ri240\\sb60\\sa100\\i\\cf2 \\bullet\\tab this unquoted list") == null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "------------------------------") != null);
+}
+
+test "separates Korean circle outline items without changing normal soft breaks or code" {
+    const input =
+        \\## 방향
+        \\
+        \\  ○ **목표:** 첫 항목
+        \\  ○ **관계:** 둘째 항목
+        \\  ○ **통계:** 셋째 항목
+        \\
+        \\ordinary first line
+        \\ordinary continuation
+        \\
+        \\```text
+        \\  ○ code one
+        \\  ○ code two
+        \\```
+    ;
+    const plain = try render(std.testing.allocator, input);
+    defer std.testing.allocator.free(plain);
+    try std.testing.expect(std.mem.indexOf(u8, plain, "○ 목표: 첫 항목\n○ 관계: 둘째 항목\n○ 통계: 셋째 항목") != null);
+    try std.testing.expect(std.mem.indexOf(u8, plain, "ordinary first line ordinary continuation") != null);
+    try std.testing.expect(std.mem.indexOf(u8, plain, "      ○ code one\n      ○ code two") != null);
+
+    const rtf = try renderRtf(std.testing.allocator, input);
+    defer std.testing.allocator.free(rtf);
+    try std.testing.expect(std.mem.count(u8, rtf, "\\u9675?") == 5);
+    try std.testing.expect(std.mem.count(u8, rtf, "\\par\n\\pard\\sa110\\f0\\fs22\\cf1 \\u9675?") == 3);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "ordinary first line ordinary continuation") != null);
 }
 
 test "renders list item lazy paragraph continuations" {
