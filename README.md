@@ -57,6 +57,8 @@ For Windows release distribution, ship `zmd-setup.exe`. The installer is the sam
 
 - Windows: direct Win32 window with a read-only `RICHEDIT50W` control. Markdown source is converted to RTF before display, so common formatting is visible immediately in viewer mode.
 - Windows reading controls: press `Ctrl` + `+` or `Ctrl` + `-`, or use `Ctrl` + mouse wheel, to zoom; press `Ctrl` + `0` to reset. The viewer scales its layout for the current monitor's DPI.
+- Windows themes: press `Ctrl` + `Shift` + `T` or use the window's system menu to switch between light and dark themes. Windows high-contrast mode takes precedence automatically.
+- Windows updates: zmd checks for a newer release in the background after showing the document. If one is available, it asks on exit whether to update; the update runs without opening another window.
 - Linux: runtime-loaded X11 window. It needs an X11/Xwayland session with `libX11.so.6` available.
 - Windows file association: run `zig-out/bin/zmd.exe --install-file-association` to register `zmd` as a Markdown "Open with" app for the current user. Then choose `zmd` from Windows "Open with..." and select "Always" to make `.md` files open with `zmd` and display the embedded zmd document icon. Run `zig-out/bin/zmd.exe --uninstall-file-association` to remove zmd's registration keys.
 
@@ -93,7 +95,6 @@ The std-only renderer currently handles enough common syntax for first-pass read
 - HTML blocks/tags are shown as inert readable text rather than interpreted markup.
 - Footnotes and many edge cases are not yet fully rendered.
 - Linux GUI text rendering is intentionally minimal X11 drawing; Unicode shaping and rich layout are not implemented yet.
-- Windows currently uses a fixed dark document palette; light mode and system high-contrast colors are not yet supported.
 - Windows cannot be forced to change the default app by this executable; the user must choose "Always" in the Windows "Open with..." flow.
 
 If lightweight/single-executable constraints materially erode Markdown support, that tradeoff should be reported and optimized before accepting the gap.

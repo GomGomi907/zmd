@@ -1,5 +1,8 @@
 const std = @import("std");
 const zmd = @import("zmd");
+const updater = @import("updater.zig");
+const updater_win32 = @import("updater_win32.zig");
+const Io = std.Io;
 
 const DWORD = u32;
 const UINT = u32;
@@ -19,6 +22,8 @@ const HBRUSH = ?*anyopaque;
 const HMENU = ?*anyopaque;
 const HFONT = ?*anyopaque;
 const HGDIOBJ = ?*anyopaque;
+const HDC = ?*anyopaque;
+const HKEY = ?*anyopaque;
 
 const LPCWSTR = [*:0]const u16;
 const WNDPROC = ?*const fn (HWND, UINT, WPARAM, LPARAM) callconv(.winapi) LRESULT;
@@ -58,6 +63,12 @@ const RECT = extern struct {
     bottom: c_long,
 };
 
+const HIGHCONTRASTW = extern struct {
+    cbSize: UINT,
+    dwFlags: DWORD,
+    lpszDefaultScheme: ?[*:0]u16,
+};
+
 const CHARRANGE = extern struct {
     cpMin: c_long,
     cpMax: c_long,
@@ -92,6 +103,8 @@ extern "user32" fn PostQuitMessage(nExitCode: c_int) callconv(.winapi) void;
 extern "user32" fn DestroyWindow(hWnd: HWND) callconv(.winapi) BOOL;
 extern "user32" fn MoveWindow(hWnd: HWND, x: c_int, y: c_int, nWidth: c_int, nHeight: c_int, bRepaint: BOOL) callconv(.winapi) BOOL;
 extern "user32" fn GetClientRect(hWnd: HWND, lpRect: *RECT) callconv(.winapi) BOOL;
+extern "user32" fn GetSystemMenu(hWnd: HWND, bRevert: BOOL) callconv(.winapi) HMENU;
+extern "user32" fn AppendMenuW(hMenu: HMENU, uFlags: UINT, uIDNewItem: UINT_PTR, lpNewItem: ?LPCWSTR) callconv(.winapi) BOOL;
 extern "user32" fn GetDpiForSystem() callconv(.winapi) UINT;
 extern "user32" fn GetDpiForWindow(hWnd: HWND) callconv(.winapi) UINT;
 extern "user32" fn GetFocus() callconv(.winapi) HWND;
@@ -103,8 +116,41 @@ extern "user32" fn MessageBoxW(hWnd: HWND, lpText: LPCWSTR, lpCaption: LPCWSTR, 
 extern "user32" fn SetTimer(hWnd: HWND, nIDEvent: UINT_PTR, uElapse: UINT, lpTimerFunc: TIMERPROC) callconv(.winapi) UINT_PTR;
 extern "user32" fn KillTimer(hWnd: HWND, uIDEvent: UINT_PTR) callconv(.winapi) BOOL;
 extern "user32" fn InvalidateRect(hWnd: HWND, lpRect: ?*const RECT, bErase: BOOL) callconv(.winapi) BOOL;
+extern "user32" fn FillRect(hDC: HDC, lprc: *const RECT, hbr: HBRUSH) callconv(.winapi) c_int;
+extern "user32" fn GetSysColor(nIndex: c_int) callconv(.winapi) DWORD;
+extern "user32" fn SystemParametersInfoW(uiAction: UINT, uiParam: UINT, pvParam: *anyopaque, fWinIni: UINT) callconv(.winapi) BOOL;
 extern "gdi32" fn GetStockObject(i: c_int) callconv(.winapi) HGDIOBJ;
 extern "gdi32" fn CreateSolidBrush(color: COLORREF) callconv(.winapi) HBRUSH;
+extern "gdi32" fn DeleteObject(ho: HGDIOBJ) callconv(.winapi) BOOL;
+extern "advapi32" fn RegGetValueW(
+    hkey: HKEY,
+    lpSubKey: LPCWSTR,
+    lpValue: LPCWSTR,
+    dwFlags: DWORD,
+    pdwType: ?*DWORD,
+    pvData: *anyopaque,
+    pcbData: *DWORD,
+) callconv(.winapi) c_long;
+extern "advapi32" fn RegCreateKeyExW(
+    hKey: HKEY,
+    lpSubKey: LPCWSTR,
+    Reserved: DWORD,
+    lpClass: ?[*:0]u16,
+    dwOptions: DWORD,
+    samDesired: DWORD,
+    lpSecurityAttributes: ?*anyopaque,
+    phkResult: *HKEY,
+    lpdwDisposition: ?*DWORD,
+) callconv(.winapi) c_long;
+extern "advapi32" fn RegSetValueExW(
+    hKey: HKEY,
+    lpValueName: LPCWSTR,
+    Reserved: DWORD,
+    dwType: DWORD,
+    lpData: *const u8,
+    cbData: DWORD,
+) callconv(.winapi) c_long;
+extern "advapi32" fn RegCloseKey(hKey: HKEY) callconv(.winapi) c_long;
 extern "dwmapi" fn DwmSetWindowAttribute(
     hwnd: HWND,
     dwAttribute: DWORD,
@@ -127,6 +173,11 @@ const ES_READONLY: DWORD = 0x0800;
 const WM_CREATE: UINT = 0x0001;
 const WM_DESTROY: UINT = 0x0002;
 const WM_SIZE: UINT = 0x0005;
+const WM_CLOSE: UINT = 0x0010;
+const WM_ERASEBKGND: UINT = 0x0014;
+const WM_SYSCOLORCHANGE: UINT = 0x0015;
+const WM_SETTINGCHANGE: UINT = 0x001a;
+const WM_SYSCOMMAND: UINT = 0x0112;
 const WM_KEYDOWN: UINT = 0x0100;
 const WM_MOUSEWHEEL: UINT = 0x020a;
 const WM_DPICHANGED: UINT = 0x02e0;
@@ -137,6 +188,7 @@ const WM_SETFONT: UINT = 0x0030;
 const WM_TIMER: UINT = 0x0113;
 const WM_ENTERSIZEMOVE: UINT = 0x0231;
 const WM_EXITSIZEMOVE: UINT = 0x0232;
+const WM_THEMECHANGED: UINT = 0x031a;
 const WM_USER: UINT = 0x0400;
 const EM_SETMARGINS: UINT = 0x00d3;
 const EM_SETBKGNDCOLOR: UINT = WM_USER + 67;
@@ -153,6 +205,12 @@ const SW_SHOWDEFAULT: c_int = 10;
 const CW_USEDEFAULT: c_int = -2147483648;
 const MB_OK: UINT = 0x00000000;
 const MB_ICONINFORMATION: UINT = 0x00000040;
+const MB_ICONQUESTION: UINT = 0x00000020;
+const MB_YESNO: UINT = 0x00000004;
+const MB_DEFBUTTON2: UINT = 0x00000100;
+const IDYES: c_int = 6;
+const MF_STRING: UINT = 0x00000000;
+const MF_SEPARATOR: UINT = 0x00000800;
 const DEFAULT_GUI_FONT: c_int = 17;
 const ST_DEFAULT: DWORD = 0;
 const CP_UTF8: UINT = 65001;
@@ -160,7 +218,9 @@ const SIZE_MINIMIZED: WPARAM = 1;
 const SWP_NOZORDER: UINT = 0x0004;
 const SWP_NOACTIVATE: UINT = 0x0010;
 const VK_CONTROL: c_int = 0x11;
+const VK_SHIFT: c_int = 0x10;
 const VK_0: WPARAM = 0x30;
+const VK_T: WPARAM = 0x54;
 const VK_ADD: WPARAM = 0x6b;
 const VK_SUBTRACT: WPARAM = 0x6d;
 const VK_OEM_PLUS: WPARAM = 0xbb;
@@ -170,10 +230,16 @@ const DWMWA_USE_IMMERSIVE_DARK_MODE: DWORD = 20;
 const DWMWA_BORDER_COLOR: DWORD = 34;
 const DWMWA_CAPTION_COLOR: DWORD = 35;
 const DWMWA_TEXT_COLOR: DWORD = 36;
-const window_background: COLORREF = rgb(9, 12, 16);
-const document_background: COLORREF = rgb(13, 17, 23);
-const window_border: COLORREF = rgb(48, 54, 61);
-const document_text: COLORREF = rgb(230, 237, 243);
+const DWMWA_COLOR_DEFAULT: COLORREF = 0xffffffff;
+const SPI_GETHIGHCONTRAST: UINT = 0x0042;
+const HCF_HIGHCONTRASTON: DWORD = 0x00000001;
+const COLOR_WINDOW: c_int = 5;
+const COLOR_WINDOWTEXT: c_int = 8;
+const COLOR_BTNFACE: c_int = 15;
+const ERROR_SUCCESS: c_long = 0;
+const REG_DWORD: DWORD = 4;
+const RRF_RT_REG_DWORD: DWORD = 0x00000018;
+const KEY_SET_VALUE: DWORD = 0x0002;
 const reader_max_width: c_int = 920;
 const reader_side_gutter: c_int = 18;
 const reader_vertical_gutter: c_int = 16;
@@ -183,6 +249,7 @@ const default_zoom_percent: u32 = 100;
 const minimum_zoom_percent: u32 = 50;
 const maximum_zoom_percent: u32 = 300;
 const zoom_step_percent: u32 = 10;
+const theme_system_command: WPARAM = 0x1ff0;
 const app_icon_id: u16 = 1;
 const resize_timer_id: UINT_PTR = 1;
 const resize_debounce_ms: UINT = 180;
@@ -203,6 +270,26 @@ var last_image_bounds: zmd.RtfImageBounds = initial_image_bounds;
 var in_size_move = false;
 var current_dpi: UINT = default_dpi;
 var zoom_percent: u32 = default_zoom_percent;
+var theme_preference: ThemePreference = .dark;
+var visual_theme: VisualTheme = .dark;
+var update_check_status = std.atomic.Value(u8).init(@intFromEnum(UpdateCheckStatus.idle));
+var available_update: ?*updater.AvailableUpdate = null;
+var update_io: ?Io = null;
+var update_temp_dir: ?[]const u8 = null;
+var update_local_app_data: ?[]const u8 = null;
+
+const ThemePreference = enum { dark, light };
+const VisualTheme = enum { dark, light, high_contrast };
+const UpdateCheckStatus = enum(u8) { idle, pending, failed, no_update, ready, consumed };
+const CloseAction = enum { exit, offer_update };
+
+const ThemePalette = struct {
+    window: COLORREF,
+    document: COLORREF,
+    border: COLORREF,
+    caption_text: COLORREF,
+    rtf: zmd.RtfPalette,
+};
 
 pub fn show(allocator: std.mem.Allocator, title: []const u8, text: []const u8) !void {
     const text_z = try allocator.dupeZ(u8, text);
@@ -210,30 +297,42 @@ pub fn show(allocator: std.mem.Allocator, title: []const u8, text: []const u8) !
     rtf_ptr = text_z.ptr;
     responsive_document = null;
     responsive_images = &.{};
+    update_io = null;
+    update_temp_dir = null;
+    update_local_app_data = null;
     defer rtf_ptr = null;
     return showWindow(allocator, title);
 }
 
 pub fn showRtfDocument(
     allocator: std.mem.Allocator,
+    io: Io,
     title: []const u8,
     document: *const zmd.RtfDocument,
     images: []const zmd.RtfImage,
+    temp_dir: ?[]const u8,
+    local_app_data: ?[]const u8,
 ) !void {
     const initial_bounds = effectiveImageBounds(initial_image_bounds, images);
     const initial_rtf = try document.finishWithImageBoundsZ(allocator, images, initial_bounds);
     defer allocator.free(initial_rtf);
 
     rtf_ptr = initial_rtf.ptr;
-    responsive_document = if (images.len > 0) document else null;
+    responsive_document = document;
     responsive_images = images;
     last_image_bounds = initial_bounds;
     in_size_move = false;
+    update_io = io;
+    update_temp_dir = temp_dir;
+    update_local_app_data = local_app_data;
     defer {
         rtf_ptr = null;
         responsive_document = null;
         responsive_images = &.{};
         in_size_move = false;
+        update_io = null;
+        update_temp_dir = null;
+        update_local_app_data = null;
     }
     return showWindow(allocator, title);
 }
@@ -247,7 +346,13 @@ fn showWindow(allocator: std.mem.Allocator, title: []const u8) !void {
 
     const class_name = std.unicode.utf8ToUtf16LeStringLiteral("zmd_window");
     instance = GetModuleHandleW(null);
-    background_brush = CreateSolidBrush(window_background);
+    theme_preference = loadThemePreference();
+    visual_theme = resolveVisualTheme(theme_preference, highContrastEnabled());
+    background_brush = CreateSolidBrush(themePalette(visual_theme).window);
+    defer {
+        if (background_brush) |brush| _ = DeleteObject(brush);
+        background_brush = null;
+    }
     current_dpi = nonzeroDpi(GetDpiForSystem());
     zoom_percent = default_zoom_percent;
 
@@ -259,7 +364,7 @@ fn showWindow(allocator: std.mem.Allocator, title: []const u8) !void {
         .hInstance = instance,
         .hIcon = LoadIconW(instance, makeIntResourceW(app_icon_id)),
         .hCursor = LoadCursorW(null, makeIntResourceW(IDC_ARROW)),
-        .hbrBackground = background_brush,
+        .hbrBackground = null,
         .lpszMenuName = null,
         .lpszClassName = class_name.ptr,
     };
@@ -281,10 +386,12 @@ fn showWindow(allocator: std.mem.Allocator, title: []const u8) !void {
         null,
     ) orelse return error.WindowInitFailed;
 
-    applyDarkWindowFrame(hwnd);
+    installSystemMenu(hwnd);
+    applyVisualTheme(hwnd, true);
     _ = ShowWindow(hwnd, SW_SHOWDEFAULT);
     if (edit_hwnd) |edit| _ = SetFocus(edit);
     _ = UpdateWindow(hwnd);
+    startUpdateCheck(update_temp_dir);
 
     var msg: MSG = undefined;
     while (GetMessageW(&msg, null, 0, 0) > 0) {
@@ -307,6 +414,89 @@ pub fn alert(allocator: std.mem.Allocator, title: []const u8, text: []const u8) 
     );
 }
 
+fn startUpdateCheck(temp_dir: ?[]const u8) void {
+    if (temp_dir == null) {
+        update_check_status.store(@intFromEnum(UpdateCheckStatus.failed), .release);
+        return;
+    }
+    update_check_status.store(@intFromEnum(UpdateCheckStatus.pending), .release);
+    const thread = std.Thread.spawn(.{}, updateCheckWorker, .{}) catch {
+        update_check_status.store(@intFromEnum(UpdateCheckStatus.failed), .release);
+        return;
+    };
+    thread.detach();
+}
+
+fn updateCheckWorker() void {
+    const allocator = std.heap.page_allocator;
+    const result = updater_win32.checkLatest(allocator, zmd.version) catch {
+        update_check_status.store(@intFromEnum(UpdateCheckStatus.failed), .release);
+        return;
+    };
+    if (result) |update| {
+        const stored = allocator.create(updater.AvailableUpdate) catch {
+            var owned = update;
+            owned.deinit(allocator);
+            update_check_status.store(@intFromEnum(UpdateCheckStatus.failed), .release);
+            return;
+        };
+        stored.* = update;
+        available_update = stored;
+        update_check_status.store(@intFromEnum(UpdateCheckStatus.ready), .release);
+    } else {
+        update_check_status.store(@intFromEnum(UpdateCheckStatus.no_update), .release);
+    }
+}
+
+fn closeActionForStatus(status: UpdateCheckStatus) CloseAction {
+    return if (status == .ready) .offer_update else .exit;
+}
+
+fn takeAvailableUpdate() ?*updater.AvailableUpdate {
+    const ready = @intFromEnum(UpdateCheckStatus.ready);
+    if (update_check_status.cmpxchgStrong(ready, @intFromEnum(UpdateCheckStatus.consumed), .acq_rel, .acquire) != null) return null;
+    const update = available_update;
+    available_update = null;
+    return update;
+}
+
+fn confirmUpdate(hwnd: HWND, allocator: std.mem.Allocator, version: []const u8) bool {
+    const title = std.unicode.utf8ToUtf16LeStringLiteral("zmd update");
+    const message = std.fmt.allocPrint(allocator, "zmd {s} is available.\n\nUpdate while closing?", .{version}) catch return false;
+    defer allocator.free(message);
+    const message_w = std.unicode.utf8ToUtf16LeAllocZ(allocator, message) catch return false;
+    defer allocator.free(message_w);
+    return MessageBoxW(hwnd, message_w.ptr, title.ptr, MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) == IDYES;
+}
+
+fn handleClose(hwnd: HWND) void {
+    const status: UpdateCheckStatus = @enumFromInt(update_check_status.load(.acquire));
+    if (closeActionForStatus(status) == .offer_update) {
+        if (takeAvailableUpdate()) |update| {
+            defer {
+                update.deinit(std.heap.page_allocator);
+                std.heap.page_allocator.destroy(update);
+            }
+            const should_ask = updater_win32.claimUpdateOffer(std.heap.page_allocator, update.version) catch false;
+            if (should_ask and confirmUpdate(hwnd, std.heap.page_allocator, update.version)) {
+                if (update_io) |io| if (update_temp_dir) |temp_dir| {
+                    const target = updater_win32.currentExePath(std.heap.page_allocator) catch null;
+                    if (target) |target_path| {
+                        defer std.heap.page_allocator.free(target_path);
+                        const kind = updater.installKind(target_path, update_local_app_data);
+                        updater_win32.launchPreparedUpdate(std.heap.page_allocator, io, temp_dir, target_path, kind, update.*) catch {
+                            updater_win32.clearUpdateOfferClaim(std.heap.page_allocator, update.version);
+                        };
+                    } else {
+                        updater_win32.clearUpdateOfferClaim(std.heap.page_allocator, update.version);
+                    }
+                };
+            }
+        }
+    }
+    _ = DestroyWindow(hwnd);
+}
+
 fn windowProc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) callconv(.winapi) LRESULT {
     switch (msg) {
         WM_CREATE => {
@@ -327,7 +517,6 @@ fn windowProc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) callconv(.w
                 null,
             );
             if (edit_hwnd) |edit| {
-                _ = SendMessageW(edit, EM_SETBKGNDCOLOR, 0, colorToLParam(document_background));
                 applyReaderMargins(edit);
                 if (GetStockObject(DEFAULT_GUI_FONT)) |font| {
                     _ = SendMessageW(edit, WM_SETFONT, @intFromPtr(font), 1);
@@ -339,7 +528,25 @@ fn windowProc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) callconv(.w
                 _ = applyReaderZoom(edit, zoom_percent);
             }
             resizeEdit(hwnd);
+            applyVisualTheme(hwnd, true);
             return 0;
+        },
+        WM_ERASEBKGND => {
+            const brush = background_brush orelse return 1;
+            var rect: RECT = undefined;
+            if (GetClientRect(hwnd, &rect) != 0) _ = FillRect(@ptrFromInt(wparam), &rect, brush);
+            return 1;
+        },
+        WM_SYSCOLORCHANGE, WM_SETTINGCHANGE, WM_THEMECHANGED => {
+            applyVisualTheme(hwnd, true);
+            return 0;
+        },
+        WM_SYSCOMMAND => {
+            if (wparam & 0xfff0 == theme_system_command) {
+                toggleTheme(hwnd);
+                return 0;
+            }
+            return DefWindowProcW(hwnd, msg, wparam, lparam);
         },
         WM_SIZE => {
             resizeEdit(hwnd);
@@ -383,6 +590,10 @@ fn windowProc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) callconv(.w
                 return 0;
             }
             return DefWindowProcW(hwnd, msg, wparam, lparam);
+        },
+        WM_CLOSE => {
+            handleClose(hwnd);
+            return 0;
         },
         WM_DESTROY => {
             _ = KillTimer(hwnd, resize_timer_id);
@@ -432,15 +643,164 @@ fn rgb(r: u8, g: u8, b: u8) COLORREF {
     return @as(COLORREF, r) | (@as(COLORREF, g) << 8) | (@as(COLORREF, b) << 16);
 }
 
-fn applyDarkWindowFrame(hwnd: HWND) void {
-    var dark_mode: BOOL = 1;
-    var caption = window_background;
-    var border = window_border;
-    var text = document_text;
+fn highContrastEnabled() bool {
+    var settings = HIGHCONTRASTW{
+        .cbSize = @sizeOf(HIGHCONTRASTW),
+        .dwFlags = 0,
+        .lpszDefaultScheme = null,
+    };
+    return SystemParametersInfoW(SPI_GETHIGHCONTRAST, @sizeOf(HIGHCONTRASTW), &settings, 0) != 0 and
+        settings.dwFlags & HCF_HIGHCONTRASTON != 0;
+}
+
+fn hkeyCurrentUser() HKEY {
+    const signed: i32 = @bitCast(@as(u32, 0x80000001));
+    return @ptrFromInt(@as(usize, @bitCast(@as(isize, signed))));
+}
+
+fn themePreferenceFromRegistryValue(value: DWORD) ThemePreference {
+    return if (value == 1) .light else .dark;
+}
+
+fn themePreferenceRegistryValue(preference: ThemePreference) DWORD {
+    return switch (preference) {
+        .dark => 0,
+        .light => 1,
+    };
+}
+
+fn loadThemePreference() ThemePreference {
+    const subkey = std.unicode.utf8ToUtf16LeStringLiteral("Software\\GomGomi907\\zmd");
+    const value_name = std.unicode.utf8ToUtf16LeStringLiteral("Theme");
+    var value: DWORD = 0;
+    var size: DWORD = @sizeOf(DWORD);
+    if (RegGetValueW(hkeyCurrentUser(), subkey.ptr, value_name.ptr, RRF_RT_REG_DWORD, null, &value, &size) != ERROR_SUCCESS) return .dark;
+    return themePreferenceFromRegistryValue(value);
+}
+
+fn saveThemePreference(preference: ThemePreference) void {
+    const subkey = std.unicode.utf8ToUtf16LeStringLiteral("Software\\GomGomi907\\zmd");
+    const value_name = std.unicode.utf8ToUtf16LeStringLiteral("Theme");
+    var key: HKEY = null;
+    if (RegCreateKeyExW(hkeyCurrentUser(), subkey.ptr, 0, null, 0, KEY_SET_VALUE, null, &key, null) != ERROR_SUCCESS) return;
+    defer _ = RegCloseKey(key);
+    var value = themePreferenceRegistryValue(preference);
+    _ = RegSetValueExW(key, value_name.ptr, 0, REG_DWORD, @ptrCast(&value), @sizeOf(DWORD));
+}
+
+fn resolveVisualTheme(preference: ThemePreference, high_contrast: bool) VisualTheme {
+    if (high_contrast) return .high_contrast;
+    return switch (preference) {
+        .dark => .dark,
+        .light => .light,
+    };
+}
+
+fn rgbBytes(color: COLORREF) [3]u8 {
+    return .{ @truncate(color), @truncate(color >> 8), @truncate(color >> 16) };
+}
+
+fn themePalette(theme: VisualTheme) ThemePalette {
+    return switch (theme) {
+        .dark => .{
+            .window = rgb(9, 12, 16),
+            .document = rgb(13, 17, 23),
+            .border = rgb(48, 54, 61),
+            .caption_text = rgb(230, 237, 243),
+            .rtf = .{
+                .text = .{ 230, 237, 243 },
+                .muted = .{ 139, 148, 158 },
+                .link = .{ 121, 192, 255 },
+                .surface = .{ 22, 27, 34 },
+                .border = .{ 48, 54, 61 },
+            },
+        },
+        .light => .{
+            .window = rgb(239, 242, 245),
+            .document = rgb(255, 255, 255),
+            .border = rgb(208, 215, 222),
+            .caption_text = rgb(31, 35, 40),
+            .rtf = .{
+                .text = .{ 31, 35, 40 },
+                .muted = .{ 87, 96, 106 },
+                .link = .{ 9, 105, 218 },
+                .surface = .{ 246, 248, 250 },
+                .border = .{ 208, 215, 222 },
+            },
+        },
+        .high_contrast => blk: {
+            const document = GetSysColor(COLOR_WINDOW);
+            const text = GetSysColor(COLOR_WINDOWTEXT);
+            const surface = GetSysColor(COLOR_BTNFACE);
+            break :blk .{
+                .window = surface,
+                .document = document,
+                .border = text,
+                .caption_text = text,
+                .rtf = .{
+                    .text = rgbBytes(text),
+                    .muted = rgbBytes(text),
+                    .link = rgbBytes(text),
+                    .surface = rgbBytes(document),
+                    .border = rgbBytes(text),
+                },
+            };
+        },
+    };
+}
+
+fn replaceBackgroundBrush(color: COLORREF) void {
+    const replacement = CreateSolidBrush(color) orelse return;
+    const previous = background_brush;
+    background_brush = replacement;
+    if (previous) |brush| _ = DeleteObject(brush);
+}
+
+fn applyVisualTheme(hwnd: HWND, reload_document: bool) void {
+    visual_theme = resolveVisualTheme(theme_preference, highContrastEnabled());
+    const palette = themePalette(visual_theme);
+    replaceBackgroundBrush(palette.window);
+    if (edit_hwnd) |edit| {
+        _ = SendMessageW(edit, EM_SETBKGNDCOLOR, 0, colorToLParam(palette.document));
+    }
+    applyWindowFrame(hwnd, visual_theme, palette);
+    if (reload_document) applyDocumentLayout(hwnd, true);
+    _ = InvalidateRect(hwnd, null, 1);
+}
+
+fn applyWindowFrame(hwnd: HWND, theme: VisualTheme, palette: ThemePalette) void {
+    var dark_mode: BOOL = if (theme == .dark) 1 else 0;
+    if (theme == .high_contrast) {
+        var system_default = DWMWA_COLOR_DEFAULT;
+        _ = DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &dark_mode, @sizeOf(BOOL));
+        _ = DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, &system_default, @sizeOf(COLORREF));
+        _ = DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, &system_default, @sizeOf(COLORREF));
+        _ = DwmSetWindowAttribute(hwnd, DWMWA_TEXT_COLOR, &system_default, @sizeOf(COLORREF));
+        return;
+    }
+    var caption = palette.window;
+    var border = palette.border;
+    var text = palette.caption_text;
     _ = DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &dark_mode, @sizeOf(BOOL));
     _ = DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, &caption, @sizeOf(COLORREF));
     _ = DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, &border, @sizeOf(COLORREF));
     _ = DwmSetWindowAttribute(hwnd, DWMWA_TEXT_COLOR, &text, @sizeOf(COLORREF));
+}
+
+fn installSystemMenu(hwnd: HWND) void {
+    const menu = GetSystemMenu(hwnd, 0) orelse return;
+    const label = std.unicode.utf8ToUtf16LeStringLiteral("Toggle light/dark theme\tCtrl+Shift+T");
+    _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
+    _ = AppendMenuW(menu, MF_STRING, theme_system_command, label.ptr);
+}
+
+fn toggleTheme(hwnd: HWND) void {
+    theme_preference = switch (theme_preference) {
+        .dark => .light,
+        .light => .dark,
+    };
+    saveThemePreference(theme_preference);
+    applyVisualTheme(hwnd, true);
 }
 
 const ReaderLayout = struct {
@@ -487,14 +847,23 @@ fn scheduleResponsiveLayout(hwnd: HWND) void {
 }
 
 fn applyResponsiveLayout(hwnd: HWND) void {
+    applyDocumentLayout(hwnd, false);
+}
+
+fn applyDocumentLayout(hwnd: HWND, force: bool) void {
     const document = responsive_document orelse return;
     const edit = edit_hwnd orelse return;
     const viewport_bounds = responsiveImageBounds(hwnd) orelse return;
     const bounds = effectiveImageBounds(viewport_bounds, responsive_images);
-    if (sameImageBounds(bounds, last_image_bounds)) return;
+    if (!force and sameImageBounds(bounds, last_image_bounds)) return;
 
     const allocator = std.heap.page_allocator;
-    const rtf = document.finishWithImageBoundsZ(allocator, responsive_images, bounds) catch return;
+    const rtf = document.finishWithImageBoundsPaletteZ(
+        allocator,
+        responsive_images,
+        bounds,
+        themePalette(visual_theme).rtf,
+    ) catch return;
     defer allocator.free(rtf);
 
     var selection = CHARRANGE{ .cpMin = 0, .cpMax = 0 };
@@ -546,6 +915,10 @@ const ZoomCommand = enum { zoom_in, zoom_out, reset };
 fn handleReaderShortcut(msg: *const MSG, window: HWND) bool {
     if (msg.hwnd != edit_hwnd) return false;
     const control_down = GetKeyState(VK_CONTROL) < 0;
+    if (msg.message == WM_KEYDOWN and isThemeToggleShortcut(msg.wParam, control_down, GetKeyState(VK_SHIFT) < 0)) {
+        toggleTheme(window);
+        return true;
+    }
     const command = switch (msg.message) {
         WM_KEYDOWN => zoomCommandForKey(msg.wParam, control_down),
         WM_MOUSEWHEEL => zoomCommandForWheel(msg.wParam, control_down),
@@ -553,6 +926,10 @@ fn handleReaderShortcut(msg: *const MSG, window: HWND) bool {
     } orelse return false;
     setReaderZoom(window, command);
     return true;
+}
+
+fn isThemeToggleShortcut(key: WPARAM, control_down: bool, shift_down: bool) bool {
+    return key == VK_T and control_down and shift_down;
 }
 
 fn zoomCommandForKey(key: WPARAM, control_down: bool) ?ZoomCommand {
@@ -691,6 +1068,38 @@ test "reader zoom shortcuts clamp and reset predictably" {
     try std.testing.expectEqual(maximum_zoom_percent, zoomPercentAfter(.zoom_in, maximum_zoom_percent));
     try std.testing.expectEqual(minimum_zoom_percent, zoomPercentAfter(.zoom_out, minimum_zoom_percent));
     try std.testing.expectEqual(default_zoom_percent, zoomPercentAfter(.reset, 170));
+}
+
+test "reader theme preference yields to Windows high contrast" {
+    try std.testing.expectEqual(VisualTheme.dark, resolveVisualTheme(.dark, false));
+    try std.testing.expectEqual(VisualTheme.light, resolveVisualTheme(.light, false));
+    try std.testing.expectEqual(VisualTheme.high_contrast, resolveVisualTheme(.dark, true));
+    try std.testing.expectEqual(VisualTheme.high_contrast, resolveVisualTheme(.light, true));
+    try std.testing.expect(isThemeToggleShortcut(VK_T, true, true));
+    try std.testing.expect(!isThemeToggleShortcut(VK_T, true, false));
+    try std.testing.expectEqual(ThemePreference.dark, themePreferenceFromRegistryValue(0));
+    try std.testing.expectEqual(ThemePreference.light, themePreferenceFromRegistryValue(1));
+    try std.testing.expectEqual(ThemePreference.dark, themePreferenceFromRegistryValue(99));
+    try std.testing.expectEqual(@as(DWORD, 1), themePreferenceRegistryValue(.light));
+
+    const light = themePalette(.light);
+    try std.testing.expectEqual(@as(COLORREF, rgb(255, 255, 255)), light.document);
+    try std.testing.expectEqual([3]u8{ 31, 35, 40 }, light.rtf.text);
+    try std.testing.expectEqual([3]u8{ 9, 105, 218 }, light.rtf.link);
+
+    const high_contrast = themePalette(.high_contrast);
+    try std.testing.expectEqual(high_contrast.rtf.text, high_contrast.rtf.muted);
+    try std.testing.expectEqual(high_contrast.rtf.text, high_contrast.rtf.link);
+    try std.testing.expectEqual(rgbBytes(high_contrast.document), high_contrast.rtf.surface);
+}
+
+test "close never waits for an unfinished or failed update check" {
+    try std.testing.expectEqual(CloseAction.exit, closeActionForStatus(.idle));
+    try std.testing.expectEqual(CloseAction.exit, closeActionForStatus(.pending));
+    try std.testing.expectEqual(CloseAction.exit, closeActionForStatus(.failed));
+    try std.testing.expectEqual(CloseAction.exit, closeActionForStatus(.no_update));
+    try std.testing.expectEqual(CloseAction.offer_update, closeActionForStatus(.ready));
+    try std.testing.expectEqual(CloseAction.exit, closeActionForStatus(.consumed));
 }
 
 test "headless RichEdit accepts and exposes rendered table content" {

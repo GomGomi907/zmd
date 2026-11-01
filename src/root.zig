@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const version = "0.2.2";
+pub const version = "0.3.0";
 
 pub const RtfImageFormat = enum {
     png,
@@ -19,6 +19,14 @@ pub const RtfImage = struct {
 pub const RtfImageBounds = struct {
     max_width: u32 = 800,
     max_height: u32 = 560,
+};
+
+pub const RtfPalette = struct {
+    text: [3]u8,
+    muted: [3]u8,
+    link: [3]u8,
+    surface: [3]u8,
+    border: [3]u8,
 };
 
 pub const RtfDocument = struct {
@@ -52,6 +60,27 @@ pub const RtfDocument = struct {
     ) ![:0]u8 {
         return finishRtfDocumentZ(allocator, self.template, images, bounds);
     }
+
+    pub fn finishWithImageBoundsPaletteZ(
+        self: RtfDocument,
+        allocator: std.mem.Allocator,
+        images: []const RtfImage,
+        bounds: RtfImageBounds,
+        palette: RtfPalette,
+    ) ![:0]u8 {
+        std.debug.assert(std.mem.startsWith(u8, self.template, rtf_header));
+        var out: std.ArrayList(u8) = .empty;
+        errdefer out.deinit(allocator);
+        try out.appendSlice(allocator, rtf_header_prefix);
+        for ([_][3]u8{ palette.text, palette.muted, palette.link, palette.surface, palette.border }) |color| {
+            const entry = try std.fmt.allocPrint(allocator, "\\red{}\\green{}\\blue{};", .{ color[0], color[1], color[2] });
+            defer allocator.free(entry);
+            try out.appendSlice(allocator, entry);
+        }
+        try out.appendSlice(allocator, rtf_header_suffix);
+        try appendFinishedRtfDocument(&out, allocator, self.template[rtf_header.len..], images, bounds);
+        return out.toOwnedSliceSentinel(allocator, 0);
+    }
 };
 
 const rtf_image_start = "\x00zmd-image\x00";
@@ -60,11 +89,14 @@ const rtf_image_fallback = "\x00zmd-fallback\x00";
 const rtf_image_end = "\x00zmd-end\x00";
 const max_rtf_embedded_image_bytes = 32 * 1024 * 1024;
 
-const rtf_header =
+const rtf_header_prefix =
     "{\\rtf1\\ansi\\ansicpg65001\\deff0" ++
     "{\\fonttbl{\\f0 Malgun Gothic;}{\\f1 Consolas;}}" ++
-    "{\\colortbl;\\red230\\green237\\blue243;\\red139\\green148\\blue158;\\red121\\green192\\blue255;\\red22\\green27\\blue34;\\red48\\green54\\blue61;}" ++
-    "\\viewkind4\\uc1\\pard\\f0\\fs22\\cf1\n";
+    "{\\colortbl;";
+const rtf_header_suffix = "}\\viewkind4\\uc1\\pard\\f0\\fs22\\cf1\n";
+const rtf_header = rtf_header_prefix ++
+    "\\red230\\green237\\blue243;\\red139\\green148\\blue158;\\red121\\green192\\blue255;\\red22\\green27\\blue34;\\red48\\green54\\blue61;" ++
+    rtf_header_suffix;
 
 const TaskItem = struct {
     checked: bool,
@@ -11763,6 +11795,25 @@ test "does not treat a mismatched delimiter row as a table" {
 
     try std.testing.expect(std.mem.indexOf(u8, rtf, "\\trowd") == null);
     try std.testing.expect(std.mem.indexOf(u8, rtf, "| A | B |") != null);
+}
+
+test "renders a custom palette without changing document contents" {
+    var document = try renderRtfDocument(std.testing.allocator, "# Title\n\n[link](https://example.com) `code`\n\n![alt](missing.png)");
+    defer document.deinit(std.testing.allocator);
+    const palette = RtfPalette{
+        .text = .{ 1, 2, 3 },
+        .muted = .{ 4, 5, 6 },
+        .link = .{ 7, 8, 9 },
+        .surface = .{ 10, 11, 12 },
+        .border = .{ 13, 14, 15 },
+    };
+    const rtf = try document.finishWithImageBoundsPaletteZ(std.testing.allocator, &.{}, .{}, palette);
+    defer std.testing.allocator.free(rtf);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\red1\\green2\\blue3;\\red4\\green5\\blue6;\\red7\\green8\\blue9;\\red10\\green11\\blue12;\\red13\\green14\\blue15;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\b\\fs36 Title") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\cf3\\ul link") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "\\highlight4 code") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rtf, "alt") != null);
 }
 
 test "keeps a readable hierarchy across paragraphs lists quotes and code" {

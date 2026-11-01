@@ -35,6 +35,10 @@ pub fn main(init: std.process.Init) !void {
     const io = init.io;
 
     if (builtin.os.tag == .windows) {
+        if (args.len > 1 and std.mem.eql(u8, args[1], "--apply-update")) {
+            _ = @import("updater_win32.zig").applyFromArguments(arena, io, args) catch return;
+            return;
+        }
         if (args.len > 0 and setup.isSetupExecutable(args[0])) {
             try setup.run(arena, io, init.environ_map, args);
             return;
@@ -111,7 +115,7 @@ pub fn main(init: std.process.Init) !void {
         };
         defer images.deinit(arena);
 
-        ui.showRtfDocument(arena, title, &document, images.items) catch |err| {
+        ui.showRtfDocument(arena, io, title, &document, images.items, init.environ_map.get("TEMP"), init.environ_map.get("LOCALAPPDATA")) catch |err| {
             const message = try std.fmt.allocPrint(arena, "Unable to open native viewer: {s}\n\nUse `zmd --dump <file.md>` for terminal output.", .{@errorName(err)});
             fatal(arena, "zmd error", message, 1);
         };

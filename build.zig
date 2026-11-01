@@ -36,6 +36,7 @@ pub fn build(b: *std.Build) void {
         exe.root_module.linkSystemLibrary("dwmapi", .{});
         exe.root_module.linkSystemLibrary("advapi32", .{});
         exe.root_module.linkSystemLibrary("shell32", .{});
+        exe.root_module.linkSystemLibrary("winhttp", .{});
         exe.root_module.addWin32ResourceFile(.{
             .file = b.path("assets/windows/zmd.rc"),
             .include_paths = &.{b.path("assets/windows")},
@@ -65,6 +66,7 @@ pub fn build(b: *std.Build) void {
         setup.root_module.linkSystemLibrary("dwmapi", .{});
         setup.root_module.linkSystemLibrary("advapi32", .{});
         setup.root_module.linkSystemLibrary("shell32", .{});
+        setup.root_module.linkSystemLibrary("winhttp", .{});
         setup.root_module.addWin32ResourceFile(.{
             .file = b.path("assets/windows/zmd.rc"),
             .include_paths = &.{b.path("assets/windows")},
@@ -99,6 +101,8 @@ pub fn build(b: *std.Build) void {
     const run_image_tests = b.addRunArtifact(image_tests);
 
     var run_ui_tests: ?*std.Build.Step.Run = null;
+    var run_updater_tests: ?*std.Build.Step.Run = null;
+    var run_updater_win32_tests: ?*std.Build.Step.Run = null;
     if (target.result.os.tag == .windows) {
         const ui_tests = b.addTest(.{
             .root_module = b.createModule(.{
@@ -113,7 +117,27 @@ pub fn build(b: *std.Build) void {
         ui_tests.root_module.linkSystemLibrary("user32", .{});
         ui_tests.root_module.linkSystemLibrary("gdi32", .{});
         ui_tests.root_module.linkSystemLibrary("dwmapi", .{});
+        ui_tests.root_module.linkSystemLibrary("advapi32", .{});
+        ui_tests.root_module.linkSystemLibrary("winhttp", .{});
         run_ui_tests = b.addRunArtifact(ui_tests);
+        const updater_tests = b.addTest(.{
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("src/updater.zig"),
+                .target = target,
+                .optimize = optimize,
+            }),
+        });
+        run_updater_tests = b.addRunArtifact(updater_tests);
+        const updater_win32_tests = b.addTest(.{
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("src/updater_win32.zig"),
+                .target = target,
+                .optimize = optimize,
+            }),
+        });
+        updater_win32_tests.root_module.linkSystemLibrary("winhttp", .{});
+        updater_win32_tests.root_module.linkSystemLibrary("advapi32", .{});
+        run_updater_win32_tests = b.addRunArtifact(updater_win32_tests);
     }
 
     const test_step = b.step("test", "Run unit tests");
@@ -121,6 +145,8 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_exe_tests.step);
     test_step.dependOn(&run_image_tests.step);
     if (run_ui_tests) |run| test_step.dependOn(&run.step);
+    if (run_updater_tests) |run| test_step.dependOn(&run.step);
+    if (run_updater_win32_tests) |run| test_step.dependOn(&run.step);
 
     const installer_step = b.step("installer", "Build the Windows installer executable");
     if (setup_install_step) |install_step| {

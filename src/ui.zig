@@ -18,12 +18,15 @@ pub fn show(allocator: std.mem.Allocator, title: []const u8, text: []const u8) !
 
 pub fn showRtfDocument(
     allocator: std.mem.Allocator,
+    io: std.Io,
     title: []const u8,
     document: *const zmd.RtfDocument,
     images: []const zmd.RtfImage,
+    temp_dir: ?[]const u8,
+    local_app_data: ?[]const u8,
 ) !void {
     return switch (builtin.os.tag) {
-        .windows => @import("ui_win32.zig").showRtfDocument(allocator, title, document, images),
+        .windows => @import("ui_win32.zig").showRtfDocument(allocator, io, title, document, images, temp_dir, local_app_data),
         else => Error.UnsupportedPlatform,
     };
 }
